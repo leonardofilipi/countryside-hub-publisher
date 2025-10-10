@@ -95,18 +95,22 @@ const upload = multer({
 // Nodemailer (Zoho)
 // =====================
 const transporter = nodemailer.createTransport({
-  host: ZOHO_SMTP_HOST,
-  port: Number(ZOHO_SMTP_PORT),
-  secure: ZOHO_SMTP_SECURE === 'true', // SSL 465
+  host: "smtppro.zoho.com",
+  port: 465,
+  secure: true,                         // SSL direto
   auth: {
-    user: ADMIN_EMAIL,
-  pass: ADMIN_EMAIL_PASSWORD,
+    user: process.env.ADMIN_EMAIL,      // adm@countrysidehub.com
+    pass: process.env.ADMIN_EMAIL_PASSWORD
   },
+  pool: true,
+  connectionTimeout: 20000,             // 20s
+  socketTimeout: 20000,
   tls: {
-    // mantém validação de certificado (seguro)
-    rejectUnauthorized: true,
-  },
+    minVersion: "TLSv1.2",
+    rejectUnauthorized: true
+  }
 });
+
 
 // Tenta validar a conexão SMTP na subida
 transporter
