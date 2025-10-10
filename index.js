@@ -324,3 +324,47 @@ app.use((_req, res) => {
 app.listen(PORT, () => {
   console.log(`[OK] ${SITE_NAME} publisher rodando na porta ${PORT}`);
 });
+// --- Permitir embed no Admin do Shopify ---
+app.use((req, res, next) => {
+  // Qualquer domínio do admin do Shopify + sua loja (subdomínio myshopify)
+  const csp = [
+    "frame-ancestors",
+    "https://admin.shopify.com",
+    "https://*.myshopify.com"
+  ].join(" ");
+
+  res.setHeader("Content-Security-Policy", csp);
+  // NÃO envie X-Frame-Options: DENY. Se algo enviar, sobrescreva:
+  res.removeHeader("X-Frame-Options");
+  next();
+});
+app.get("/", (_req, res) => {
+  res.status(200).send(`
+    <!doctype html>
+    <html lang="pt-br">
+      <head>
+        <meta charset="utf-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <title>Countryside Hub Publisher</title>
+        <style>
+          body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu, sans-serif;
+               margin:0;padding:32px;background:#f6f7f8;color:#0d1b0f}
+          .card{max-width:760px;margin:0 auto;background:#fff;border:1px solid #e6e8eb;border-radius:16px;padding:28px;
+                box-shadow:0 6px 24px rgba(0,0,0,.06)}
+          h1{margin:0 0 8px}
+          p{margin:8px 0 0;line-height:1.5}
+          a.button{display:inline-block;margin-top:16px;padding:10px 16px;border-radius:10px;border:1px solid #d4dfd6;text-decoration:none}
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h1>🎉 App instalado</h1>
+          <p>Seu app “Countryside Hub Publisher” está rodando. <br/>
+             Use os endpoints já criados (ex.: <code>/health</code> e <code>/submit</code>) e as páginas do tema para o fluxo de cadastro/anúncio.</p>
+          <a class="button" href="/health" target="_blank">Ver /health</a>
+        </div>
+      </body>
+    </html>
+  `);
+});
+
