@@ -1,60 +1,92 @@
 // index.js
-// Countryside Hub Publisher – Node.js + Express + Nodemailer (Zoho Mail Individual)
+// Countryside Hub Publisher - Node + Express
+// SMTP: Zoho (US Datacenter) - STARTTLS (porta 587)
 
-const express = require("express");
-const cors = require("cors");
-const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
-const nodemailer = require("nodemailer");
-const multer = require("multer");
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const nodemailer = require('nodemailer');
+const multer = require('multer');
+const net = require('net');
 
 // =========================
-// Environment Config
+// Configurações / Ambiente
 // =========================
 const {
   PORT = 3000,
-  SITE_NAME = "Countryside Hub",
+  SITE_NAME = 'Countryside Hub',
+
+  // Zoho - remetente e App Password (obrigatórios)
   ADMIN_EMAIL,
   ADMIN_EMAIL_PASSWORD,
+
+  // Opcional: cópia de fiscalização (se vazio, cai no ADMIN_EMAIL)
   REVIEW_EMAIL,
+
+  // CORS: defina seu domínio, ex.: https://countrysidehub.com
   ALLOWED_ORIGIN,
-  ZOHO_SMTP_HOST = "smtp.zoho.com", // SMTP padrão para contas individuais
-  ZOHO_SMTP_PORT = "587",
-  ZOHO_SMTP_SECURE = "false",
+
+  // SMTP avançado (com defaults para Zoho US/STARTTLS):
+  ZOHO_SMTP_HOST = 'smtp.zoho.com',
+  ZOHO_SMTP_PORT = '587',
+  ZOHO_SMTP_SECURE = 'false', // false = STARTTLS (porta 587); true = SSL direto (porta 465)
 } = process.env;
 
 if (!ADMIN_EMAIL || !ADMIN_EMAIL_PASSWORD) {
-  console.error(
-    "[ERRO] ADMIN_EMAIL e ADMIN_EMAIL_PASSWORD (App Password do Zoho) são obrigatórios."
-  );
+  console.error('[ERRO] Defina ADMIN_EMAIL e ADMIN_EMAIL_PASSWORD (Zoho App Password).');
   process.exit(1);
 }
 
-// =========================
-// App Setup
-// =========================
+const SMTP_HOST = String(ZOHO_SMTP_HOST).trim();
+const SMTP_PORT = parseInt(String(ZOHO_SMTP_PORT).trim(), 10) || 587;
+const SMTP_SECURE = String(ZOHO_SMTP_SECURE).toLowerCase() === 'true'; // false para STARTTLS
+
+// ================
+// App & Segurança
+// ================
 const app = express();
-app.use(helmet({ crossOriginResourcePolicy: false }));
+
+// Segurança de headers (sem bloquear frames para admin Shopify)
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false,
+    contentSecurityPolicy: false, // vamos setar CSP manualmente abaixo
+  })
+);
+
+// CSP permitindo embed no Admin do Shopify
+app.use((req, res, next) => {
+  const csp = [
+    'frame-ancestors',
+    'https://admin.shopify.com',
+    'https://*.myshopify.com',
+  ].join(' ');
+  res.setHeader('Content-Security-Policy', csp);
+  res.removeHeader('X-Frame-Options');
+  next();
+});
+
+// CORS
 app.use(
   cors({
     origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (!ALLOWED_ORIGIN) return cb(null, true);
-      const ok =
-        origin === ALLOWED_ORIGIN ||
-        origin === ALLOWED_ORIGIN.replace(/\/$/, "");
-      cb(ok ? null : new Error("Origin not allowed by CORS"), ok);
+      if (!origin) return cb(null, true); // health checks / curl
+      if (!ALLOWED_ORIGIN) return cb(null, true); // sem restrição
+      const ok = origin === ALLOWED_ORIGIN || origin === ALLOWED_ORIGIN.replace(/\/$/, '');
+      cb(ok ? null : new Error('Origin not allowed by CORS'), ok);
     },
+    credentials: false,
   })
 );
-app.use(express.json({ limit: "2mb" }));
-app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 
-// =========================
-// Rate Limit
-// =========================
+// Body parsers
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+// Rate limit básico
 app.use(
-  "/api/",
+  '/api/',
   rateLimit({
     windowMs: 60 * 1000,
     max: 60,
@@ -63,165 +95,253 @@ app.use(
   })
 );
 
-// =========================
-// File Uploads
-// =========================
+// =====================
+// Upload (anexos)
+// =====================
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 5 },
 });
 
-// =========================
-// SMTP Transporter (Zoho)
-// =========================
-async function createTransporter() {
-  const tryOptions = [
-    {
-      host: ZOHO_SMTP_HOST,
-      port: 587,
-      secure: false,
-    },
-    {
-      host: ZOHO_SMTP_HOST,
-      port: 465,
-      secure: true,
-    },
+// =====================
+// Nodemailer (Zoho)
+// =====================
+const transporter = nodemailer.createTransport({
+  host: SMTP_HOST,
+  port: SMTP_PORT,
+  secure: SMTP_SECURE, // false -> STARTTLS; true -> SSL direto
+  auth: { user: ADMIN_EMAIL, pass: ADMIN_EMAIL_PASSWORD },
+  pool: true,
+  connectionTimeout: 20000,
+  socketTimeout: 20000,
+  tls: {
+    minVersion: 'TLSv1.2',
+    // Para Zoho US + Render normalmente não precisa mexer nisso:
+    rejectUnauthorized: true,
+  },
+});
+
+// Teste inicial de conexão SMTP (assíncrono, não derruba o app)
+transporter
+  .verify()
+  .then(() => console.log('[OK] SMTP verificado:', SMTP_HOST, 'porta', SMTP_PORT, 'secure:', SMTP_SECURE))
+  .catch((err) => console.error('[ERRO] Falha ao verificar SMTP Zoho:', err?.message || err));
+
+// =====================
+// Utilidades
+// =====================
+const sanitize = (s = '') => String(s).trim();
+const money = (v) => {
+  const n = Number(String(v).replace(/[^\d.,-]/g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n.toFixed(2) : '';
+};
+
+function buildAdminHtml(payload, filesInfo) {
+  const {
+    nome_empresa,
+    nome_completo,
+    cpf_cnpj,
+    email,
+    telefone,
+    cidade,
+    estado,
+    categoria,
+    subcategoria,
+    produto,
+    preco,
+    aceita_propostas,
+    entrega,
+    local,
+    descricao,
+    termos_aceitos,
+    propostas,
+  } = payload;
+
+  const linhas = [
+    `<p><b>Nome completo:</b> ${sanitize(nome_completo)}</p>`,
+    `<p><b>Nome da empresa:</b> ${sanitize(nome_empresa || '(não informado)')}</p>`,
+    `<p><b>CPF/CNPJ:</b> ${sanitize(cpf_cnpj)}</p>`,
+    `<p><b>E-mail:</b> ${sanitize(email)}</p>`,
+    `<p><b>Telefone:</b> ${sanitize(telefone)}</p>`,
+    `<p><b>Cidade/UF:</b> ${sanitize(cidade)} / ${sanitize(estado)}</p>`,
+    `<p><b>Categoria:</b> ${sanitize(categoria)}</p>`,
+    `<p><b>Subcategoria:</b> ${sanitize(subcategoria || '(não informado)')}</p>`,
+    `<p><b>Produto/Animal:</b> ${sanitize(produto || '(não informado)')}</p>`,
+    `<p><b>Preço (R$):</b> ${money(preco)}</p>`,
+    `<p><b>Aceita propostas:</b> ${sanitize(aceita_propostas || propostas || '(não informado)')}</p>`,
+    `<p><b>Entrega/Coleta:</b> ${sanitize(entrega || '(não informado)')}</p>`,
+    `<p><b>Local:</b> ${sanitize(local || '(não informado)')}</p>`,
+    `<p><b>Descrição:</b><br>${(sanitize(descricao) || '(sem descrição)').replace(/\n/g, '<br>')}</p>`,
+    `<p><b>Termos & Condições:</b> ${termos_aceitos ? 'Aceitos' : 'Não aceitos'}</p>`,
   ];
 
-  for (const opts of tryOptions) {
-    try {
-      const transporter = nodemailer.createTransport({
-        ...opts,
-        auth: {
-          user: ADMIN_EMAIL,
-          pass: ADMIN_EMAIL_PASSWORD,
-        },
-        tls: {
-          minVersion: "TLSv1.2",
-          rejectUnauthorized: false,
-        },
-      });
-
-      await transporter.verify();
-      console.log(
-        `[OK] SMTP verificado com sucesso em ${opts.host}:${opts.port} (secure=${opts.secure})`
-      );
-      return transporter;
-    } catch (e) {
-      console.warn(
-        `[Aviso] Falha ao conectar em ${opts.host}:${opts.port}: ${e.message}`
-      );
-    }
+  if (filesInfo?.length) {
+    linhas.push(
+      `<p><b>Anexos:</b> ${filesInfo
+        .map((f) => `${f.originalname} (${(f.size / 1024).toFixed(1)} KB)`)
+        .join(', ')}</p>`
+    );
   }
 
-  throw new Error("Não foi possível conectar ao servidor SMTP da Zoho.");
-}
-
-let transporterPromise = createTransporter();
-
-// =========================
-// Utils
-// =========================
-function sanitize(str = "") {
-  return String(str).trim();
-}
-function money(v) {
-  const n = Number(String(v).replace(/[^\d.,-]/g, "").replace(",", "."));
-  return Number.isFinite(n) ? n.toFixed(2) : "";
-}
-function buildAdminHtml(payload, filesInfo) {
-  const linhas = Object.entries(payload)
-    .map(([k, v]) => `<p><b>${k}:</b> ${sanitize(v)}</p>`)
-    .join("\n");
-  const anexos =
-    filesInfo?.length > 0
-      ? `<p><b>Anexos:</b> ${filesInfo
-          .map((f) => f.originalname)
-          .join(", ")}</p>`
-      : "";
   return `
-  <div style="font-family:Arial,sans-serif">
-    <h2>📢 Novo anúncio publicado</h2>
-    ${linhas}
-    ${anexos}
-    <hr><p>Gerado automaticamente pelo ${SITE_NAME}</p>
-  </div>`;
+    <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">
+      <h2>NOVO ANÚNCIO PUBLICADO (auto)</h2>
+      ${linhas.join('\n')}
+      <hr>
+      <p style="font-size:12px;color:#666">
+        E-mail gerado automaticamente pelo formulário do ${SITE_NAME}.
+      </p>
+    </div>
+  `;
 }
+
 function buildWelcomeHtml(payload) {
+  const { nome_completo, produto, preco } = payload;
   return `
-  <div style="font-family:Arial,sans-serif">
-    <h2>Bem-vindo(a) ao ${SITE_NAME}!</h2>
-    <p>Olá ${sanitize(payload.nome_completo)} 👋</p>
-    <p>Seu anúncio <b>${sanitize(payload.produto)}</b> foi publicado com sucesso!</p>
-    <p>Equipe ${SITE_NAME}</p>
-  </div>`;
+    <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#222;line-height:1.5">
+      <h2>Bem-vindo(a) ao ${SITE_NAME}!</h2>
+      <p>Olá ${sanitize(nome_completo) || 'vendedor(a)'} 👋</p>
+      <p>Seu anúncio <b>${sanitize(produto || 'seu produto')}</b> foi publicado com sucesso${
+        preco ? ` por <b>R$ ${money(preco)}</b>` : ''
+      }.</p>
+      <ul>
+        <li>Responda rápido os interessados;</li>
+        <li>Negocie com transparência (preço, entrega/coleta, prazos);</li>
+        <li>Evite pagamentos fora dos canais combinados com o comprador.</li>
+      </ul>
+      <p>Estamos juntos para te ajudar a vender mais e melhor. Bons negócios! 🚀</p>
+      <p>Equipe ${SITE_NAME}</p>
+    </div>
+  `;
 }
 
-// =========================
-// Routes
-// =========================
-app.get("/", (req, res) => {
-  res.status(200).send("OK - Countryside Hub Publisher ativo");
+// =====================
+// Rotas básicas
+// =====================
+app.get('/', (_req, res) => {
+  res.status(200).send('OK');
 });
 
-app.get("/healthz", (req, res) => {
-  res.status(200).json({ status: "ok", time: new Date().toISOString() });
+app.get('/healthz', (_req, res) => {
+  res.status(200).json({ status: 'ok', time: new Date().toISOString() });
 });
 
-app.get("/smtp-check", async (req, res) => {
+// Diagnóstico SMTP (usa transporter.verify na hora)
+app.get('/smtp-check', async (_req, res) => {
   try {
-    const t = await transporterPromise;
-    await t.verify();
-    res.status(200).send("SMTP OK");
-  } catch (e) {
-    res.status(500).send("SMTP FAIL: " + e.message);
+    await transporter.verify();
+    res.status(200).send('SMTP OK');
+  } catch (err) {
+    res
+      .status(500)
+      .send(`SMTP FAIL: ${err?.code || ''} ${err?.message || String(err)}`);
   }
 });
 
-const handler = async (req, res) => {
+// Diagnóstico TCP (verifica rota/porta de saída da Render)
+app.get('/tcp-check', (req, res) => {
+  const host = req.query.host || SMTP_HOST;
+  const port = parseInt(req.query.port || SMTP_PORT, 10);
+
+  const started = Date.now();
+  const socket = net.createConnection({ host, port, timeout: 8000 }, () => {
+    const ms = Date.now() - started;
+    socket.end();
+    res.status(200).send(`TCP OK: ${host}:${port} em ${ms}ms`);
+  });
+  socket.on('timeout', () => {
+    socket.destroy();
+    res.status(504).send('TCP TIMEOUT');
+  });
+  socket.on('error', (e) => {
+    res.status(500).send(`TCP ERROR: ${e.code || ''} ${e.message}`);
+  });
+});
+
+// =====================================================
+// Rota de publicação (aceita multipart com documentos)
+// =====================================================
+const publishHandler = async (req, res) => {
   try {
-    const payload = req.body;
+    const payload = {
+      nome_empresa: sanitize(req.body.nome_empresa),
+      nome_completo: sanitize(req.body.nome_completo),
+      cpf_cnpj: sanitize(req.body.cpf_cnpj),
+      email: sanitize(req.body.email),
+      telefone: sanitize(req.body.telefone),
+      cidade: sanitize(req.body.cidade),
+      estado: sanitize(req.body.estado),
+
+      categoria: sanitize(req.body.categoria),
+      subcategoria: sanitize(req.body.subcategoria),
+      produto: sanitize(req.body.produto),
+      preco: sanitize(req.body.preco),
+      aceita_propostas: sanitize(req.body.aceita_propostas),
+      propostas: sanitize(req.body.propostas),
+      entrega: sanitize(req.body.entrega),
+      local: sanitize(req.body.local),
+      descricao: sanitize(req.body.descricao),
+      termos_aceitos: String(req.body.termos_aceitos) === 'true' || req.body.termos_aceitos === 'on',
+    };
+
+    const missing = [];
+    if (!payload.email) missing.push('email');
+    if (!payload.nome_completo) missing.push('nome_completo');
+    if (!payload.cpf_cnpj) missing.push('cpf_cnpj');
+    if (!payload.preco) missing.push('preco');
+    if (!payload.entrega) missing.push('entrega');
+    if (!payload.termos_aceitos) missing.push('termos_aceitos');
+
+    if (missing.length) {
+      return res.status(400).json({ ok: false, error: `Campos obrigatórios: ${missing.join(', ')}` });
+    }
+
     const files = (req.files || []).map((f) => ({
       filename: f.originalname,
       content: f.buffer,
       contentType: f.mimetype,
     }));
-    const transporter = await transporterPromise;
 
-    // Envia para o admin
+    // Envia para fiscalização
+    const adminTo = sanitize(REVIEW_EMAIL || ADMIN_EMAIL);
+    const adminHtml = buildAdminHtml(payload, req.files);
+
     await transporter.sendMail({
       from: `${SITE_NAME} <${ADMIN_EMAIL}>`,
-      to: REVIEW_EMAIL || ADMIN_EMAIL,
-      subject: `Novo anúncio: ${sanitize(payload.produto)}`,
-      html: buildAdminHtml(payload, req.files),
+      to: adminTo,
+      subject: `Novo anúncio publicado - ${sanitize(payload.produto || 'Produto')}`,
+      html: adminHtml,
       attachments: files,
     });
 
-    // E-mail de boas-vindas
+    // Boas-vindas
+    const welcomeHtml = buildWelcomeHtml(payload);
     await transporter.sendMail({
       from: `${SITE_NAME} <${ADMIN_EMAIL}>`,
       to: payload.email,
-      subject: `Bem-vindo(a) ao ${SITE_NAME}!`,
-      html: buildWelcomeHtml(payload),
+      subject: `Bem-vindo(a) ao ${SITE_NAME}! Seu anúncio está no ar`,
+      html: welcomeHtml,
     });
 
-    res.status(200).json({ ok: true, message: "E-mails enviados com sucesso." });
-  } catch (e) {
-    console.error("[ERRO /publish]", e.message);
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(200).json({ ok: true, message: 'Anúncio publicado e e-mails enviados.' });
+  } catch (err) {
+    console.error('[ERRO /publish]', err?.message || err, err?.stack);
+    res.status(500).json({ ok: false, error: 'Falha interna ao processar o anúncio.' });
   }
 };
 
-app.post("/publish", upload.array("docs[]", 5), handler);
-app.post("/api/publish", upload.array("docs[]", 5), handler);
+app.post('/publish', upload.array('docs[]', 5), publishHandler);
+app.post('/api/publish', upload.array('docs[]', 5), publishHandler);
 
-app.use((_req, res) =>
-  res.status(404).json({ ok: false, error: "Rota não encontrada." })
-);
+// 404
+app.use((_req, res) => {
+  res.status(404).json({ ok: false, error: 'Rota não encontrada.' });
+});
 
-// =========================
-// Start Server
-// =========================
-app.listen(PORT, () =>
-  console.log(`[OK] ${SITE_NAME} publisher rodando na porta ${PORT}`)
-);
+// =====================
+// Sobe o servidor
+// =====================
+app.listen(PORT, () => {
+  console.log(`[OK] ${SITE_NAME} publisher rodando na porta ${PORT}`);
+  console.log(`[SMTP] host=${SMTP_HOST} port=${SMTP_PORT} secure=${SMTP_SECURE}`);
+});
