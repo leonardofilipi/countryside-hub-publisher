@@ -275,6 +275,32 @@ async function shopifyGraphQL(query, variables={}){
   }
   return j.data;
 }
+// ===== REVIEWS (perfis de vendedor) ===== //
+// criar avaliação
+app.post('/reviews', auth, async (req, res) => {
+  const { sellerEmail, rating, title, body } = req.body || {};
+  if (!sellerEmail || !rating) return res.status(400).json({ error: 'missing_fields' });
+  if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+
+  await pool.query(
+    'insert into reviews (seller_email, reviewer_email, rating, title, body) values ($1,$2,$3,$4,$5)',
+    [sellerEmail, req.user.email, Number(rating), title||null, body||null]
+  );
+
+  res.json({ ok: true });
+
+  // === AQUI EMBAIXO: ADICIONE O DISPARO DO RECOMPUTE ===
+  try {
+    await fetch('https://csh-auth-2.onrender.com/seller/recompute', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ sellerEmail })
+    });
+  } catch(e) {
+    console.warn('recompute failed (silent):', e?.message);
+  }
+  // ================================================
+});
 
 // Retorna média e contagem a partir do Postgres
 app.get('/seller/aggregate/:email', async (req, res) => {
