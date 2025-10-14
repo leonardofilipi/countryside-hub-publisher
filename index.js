@@ -1,331 +1,255 @@
-// index.js (CommonJS) – Countryside Hub Publisher via Zoho Mail API
-// Requisitos de env: PORT, SITE_NAME, ALLOWED_ORIGIN (opcional),
-// ZOHO_API_DOMAIN, ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, ZOHO_REFRESH_TOKEN
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import nodemailer from 'nodemailer';
+import { randomUUID as uuid } from 'crypto';
+import pkg from 'pg';
+const { Pool } = pkg;
 
-const express = require("express");
-const cors = require("cors");
-const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
-const multer = require("multer"); // usar ^1.4.5-lts.1 no package.json
-const axios = require("axios");
-const qs = require("querystring");
-
-// ---------- Config / Env ----------
 const {
-  PORT = 3000,
-  SITE_NAME = "Countryside Hub",
-  ALLOWED_ORIGIN,
-  ZOHO_API_DOMAIN,
-  ZOHO_CLIENT_ID,
-  ZOHO_CLIENT_SECRET,
-  ZOHO_REFRESH_TOKEN,
+  PORT = 10000,
+  JWT_SECRET,
+  CORS_ORIGIN,
+  PUBLIC_URL,
+  SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, MAIL_FROM,
+  DATABASE_URL
 } = process.env;
 
-if (!ZOHO_API_DOMAIN || !ZOHO_CLIENT_ID || !ZOHO_CLIENT_SECRET || !ZOHO_REFRESH_TOKEN) {
-  // Não derruba, mas avisa claramente (as rotas de /healthz continuam funcionando)
-  console.warn(
-    "[WARN] Variáveis da API Zoho ausentes. Defina ZOHO_API_DOMAIN, ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET e ZOHO_REFRESH_TOKEN."
-  );
-}
-
-// ---------- App ----------
+// ==== Infra básica ==== //
 const app = express();
+app.use(express.json());
+app.use(cookieParser());
+app.use(cors({
+  origin: CORS_ORIGIN?.split(',').map(s => s.trim()),
+  credentials: true
+}));
 
-app.use(
-  helmet({
-    crossOriginResourcePolicy: false,
-  })
-);
+// DB (Postgres)
+const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } }) : null;
 
-app.use(
-  cors({
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (!ALLOWED_ORIGIN) return cb(null, true);
-      const ok =
-        origin === ALLOWED_ORIGIN ||
-        origin === ALLOWED_ORIGIN.replace(/\/$/, "");
-      cb(ok ? null : new Error("Origin not allowed by CORS"), ok);
-    },
-    credentials: false,
-  })
-);
-
-app.use(express.json({ limit: "2mb" }));
-app.use(express.urlencoded({ extended: true, limit: "2mb" }));
-
-app.use(
-  "/api/",
-  rateLimit({
-    windowMs: 60 * 1000,
-    max: 60,
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
-
-// Upload (em memória)
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024, files: 5 },
-});
-
-// ---------- Helpers ----------
-function sanitize(s = "") {
-  return String(s || "").trim();
-}
-function money(v) {
-  const n = Number(String(v).replace(/[^\d.,-]/g, "").replace(",", "."));
-  return Number.isFinite(n) ? n.toFixed(2) : "";
-}
-
-// Pega access_token a partir do refresh_token (fluxo server-to-server)
-async function getAccessToken() {
-  if (!ZOHO_CLIENT_ID || !ZOHO_CLIENT_SECRET || !ZOHO_REFRESH_TOKEN) {
-    throw new Error("ZOHO OAuth vars missing");
-  }
-  const url = "https://accounts.zoho.com/oauth/v2/token";
-  const body = qs.stringify({
-    grant_type: "refresh_token",
-    client_id: ZOHO_CLIENT_ID,
-    client_secret: ZOHO_CLIENT_SECRET,
-    refresh_token: ZOHO_REFRESH_TOKEN,
-  });
-
-  const { data } = await axios.post(url, body, {
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    timeout: 15000,
-  });
-
-  if (!data.access_token) {
-    throw new Error("No access_token from Zoho");
-  }
-  return data.access_token;
-}
-
-// Monta payload do Zoho Mail API (/mail/v1/messages)
-function buildZohoMessage({ from, to, subject, html, files }) {
-  // Attachments precisam ser base64 inline (sem necessidade de conteúdo CID aqui)
-  const attachments = (files || []).map((f) => ({
-    name: f.filename || f.originalname || "arquivo",
-    content: f.buffer.toString("base64"),
-    encoding: "base64",
-  }));
-
-  return {
-    from: { email: from },
-    to: [{ email: to }],
-    subject,
-    content: [
-      {
-        type: "text/html",
-        content: html || "",
-      },
-    ],
-    attachments,
-  };
-}
-
-async function sendViaZoho(message) {
-  if (!ZOHO_API_DOMAIN) throw new Error("ZOHO_API_DOMAIN missing");
-  const accessToken = await getAccessToken();
-  const url = `${ZOHO_API_DOMAIN}/mail/v1/messages`; // ex.: https://www.zohoapis.com/mail/v1/messages
-
-  const { data } = await axios.post(url, message, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    timeout: 20000,
-  });
-  return data;
-}
-
-// HTML admin
-function buildAdminHtml(payload, filesInfo) {
-  const {
-    nome_empresa,
-    nome_completo,
-    cpf_cnpj,
-    email,
-    telefone,
-    cidade,
-    estado,
-    categoria,
-    subcategoria,
-    produto,
-    preco,
-    aceita_propostas,
-    entrega,
-    local,
-    descricao,
-    termos_aceitos,
-    propostas,
-  } = payload;
-
-  const linhas = [
-    `<p><b>Nome completo:</b> ${sanitize(nome_completo)}</p>`,
-    `<p><b>Nome da empresa:</b> ${sanitize(nome_empresa || "(não informado)")}</p>`,
-    `<p><b>CPF/CNPJ:</b> ${sanitize(cpf_cnpj)}</p>`,
-    `<p><b>E-mail:</b> ${sanitize(email)}</p>`,
-    `<p><b>Telefone:</b> ${sanitize(telefone)}</p>`,
-    `<p><b>Cidade/UF:</b> ${sanitize(cidade)} / ${sanitize(estado)}</p>`,
-    `<p><b>Categoria:</b> ${sanitize(categoria)}</p>`,
-    `<p><b>Subcategoria:</b> ${sanitize(subcategoria || "(não informado)")}</p>`,
-    `<p><b>Produto/Animal:</b> ${sanitize(produto || "(não informado)")}</p>`,
-    `<p><b>Preço (R$):</b> ${money(preco)}</p>`,
-    `<p><b>Aceita propostas:</b> ${sanitize(aceita_propostas || propostas || "(não informado)")}</p>`,
-    `<p><b>Entrega/Coleta:</b> ${sanitize(entrega || "(não informado)")}</p>`,
-    `<p><b>Local para retirada/entrega:</b> ${sanitize(local || "(não informado)")}</p>`,
-    `<p><b>Descrição detalhada:</b><br>${(sanitize(descricao) || "(sem descrição)").replace(/\n/g, "<br>")}</p>`,
-    `<p><b>Termos & Condições:</b> ${termos_aceitos ? "Aceitos" : "Não aceitos"}</p>`,
-  ];
-
-  if (filesInfo?.length) {
-    linhas.push(
-      `<p><b>Anexos:</b> ${filesInfo
-        .map((f) => `${f.originalname} (${(f.size / 1024).toFixed(1)} KB)`)
-        .join(", ")}</p>`
+// Cria tabelas (users, verify_tokens, reset_tokens, reviews)
+async function ensureSchema(){
+  if (!pool) return;
+  await pool.query(`
+    create table if not exists users (
+      id uuid primary key default gen_random_uuid(),
+      email text unique not null,
+      password_hash text not null,
+      name text,
+      phone text,
+      verified boolean default false,
+      created_at timestamptz default now()
     );
-  }
+    create table if not exists verify_tokens (
+      token uuid primary key,
+      user_email text not null,
+      created_at timestamptz default now()
+    );
+    create table if not exists reset_tokens (
+      token uuid primary key,
+      user_email text not null,
+      created_at timestamptz default now()
+    );
+    create table if not exists reviews (
+      id uuid primary key default gen_random_uuid(),
+      seller_email text not null,
+      reviewer_email text not null,
+      rating int check(rating between 1 and 5) not null,
+      title text,
+      body text,
+      created_at timestamptz default now(),
+      approved boolean default true
+    );
+  `);
+}
+ensureSchema().catch(console.error);
 
-  return `
-    <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">
-      <h2>NOVO ANÚNCIO PUBLICADO (auto)</h2>
-      ${linhas.join("\n")}
-      <hr>
-      <p style="font-size:12px;color:#666">
-        Este e-mail foi gerado automaticamente pelo formulário de cadastro de anúncio do ${SITE_NAME}.
-      </p>
-    </div>
-  `;
+// Mailer (Zoho)
+const transporter = nodemailer.createTransport({
+  host: SMTP_HOST, port: Number(SMTP_PORT||465), secure: SMTP_SECURE === 'true',
+  auth: { user: SMTP_USER, pass: SMTP_PASS }
+});
+
+// Helpers
+function setSession(res, payload){
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  res.cookie('csh_sid', token, {
+    httpOnly: true, sameSite: 'lax', secure: true, path: '/'
+  });
+}
+function clearSession(res){ res.clearCookie('csh_sid', { path: '/' }); }
+function auth(req, res, next){
+  const t = req.cookies.csh_sid;
+  if (!t) return res.status(401).json({ error: 'not_auth' });
+  try{
+    req.user = jwt.verify(t, JWT_SECRET);
+    next();
+  } catch(e){ return res.status(401).json({ error: 'bad_token' }); }
 }
 
-// HTML boas-vindas
-function buildWelcomeHtml(payload) {
-  const { nome_completo, produto, preco } = payload;
-  return `
-    <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#222;line-height:1.5">
-      <h2>Bem-vindo(a) ao ${SITE_NAME}!</h2>
-      <p>Olá ${sanitize(nome_completo) || "vendedor(a)"} 👋</p>
-      <p>Seu anúncio <b>${sanitize(produto || "seu produto")}</b> foi publicado com sucesso${
-        preco ? ` por <b>R$ ${money(preco)}</b>` : ""
-      }.</p>
-      <ul>
-        <li>Responda rápido os interessados;</li>
-        <li>Negocie com transparência (preço, entrega/coleta, prazos);</li>
-        <li>Evite pagamentos fora dos canais combinados com o comprador.</li>
-      </ul>
-      <p>Bons negócios! 🚀</p>
-      <p>Equipe ${SITE_NAME}</p>
-    </div>
-  `;
-}
+// ===== AUTH ROUTES ===== //
 
-// ---------- Rotas básicas ----------
-app.get("/", (_req, res) => {
-  res.status(200).send("OK");
-});
+// register
+app.post('/auth/register', async (req, res) => {
+  const { email, password, name, phone } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'email_password_required' });
 
-app.get("/healthz", (_req, res) => {
-  res.status(200).json({ status: "ok", time: new Date().toISOString() });
-});
+  const hash = await bcrypt.hash(password, 10);
 
-// Checagem simples da API Zoho (só tenta trocar o refresh_token por access_token)
-app.get("/mailapi-check", async (_req, res) => {
-  try {
-    const t = await getAccessToken();
-    res.status(200).send(t ? "MAIL API OK" : "MAIL API FAIL");
-  } catch (e) {
-    res.status(502).send(`MAIL API FAIL: ${e?.message || e}`);
+  if (pool){
+    // upsert simples
+    const q = `insert into users (email, password_hash, name, phone)
+               values ($1,$2,$3,$4)
+               on conflict (email) do update set password_hash = excluded.password_hash
+               returning email, verified, name, phone`;
+    const { rows } = await pool.query(q, [email, hash, name||null, phone||null]);
   }
-});
 
-// ---------- Publicação / envio de e-mails ----------
-const publishHandler = async (req, res) => {
-  try {
-    const payload = {
-      nome_empresa: sanitize(req.body.nome_empresa),
-      nome_completo: sanitize(req.body.nome_completo),
-      cpf_cnpj: sanitize(req.body.cpf_cnpj),
-      email: sanitize(req.body.email),
-      telefone: sanitize(req.body.telefone),
-      cidade: sanitize(req.body.cidade),
-      estado: sanitize(req.body.estado),
-      categoria: sanitize(req.body.categoria),
-      subcategoria: sanitize(req.body.subcategoria),
-      produto: sanitize(req.body.produto),
-      preco: sanitize(req.body.preco),
-      aceita_propostas: sanitize(req.body.aceita_propostas),
-      propostas: sanitize(req.body.propostas),
-      entrega: sanitize(req.body.entrega),
-      local: sanitize(req.body.local),
-      descricao: sanitize(req.body.descricao),
-      termos_aceitos:
-        String(req.body.termos_aceitos) === "true" || req.body.termos_aceitos === "on",
-    };
-
-    const missing = [];
-    if (!payload.email) missing.push("email");
-    if (!payload.nome_completo) missing.push("nome_completo");
-    if (!payload.cpf_cnpj) missing.push("cpf_cnpj");
-    if (!payload.preco) missing.push("preco");
-    if (!payload.entrega) missing.push("entrega");
-    if (!payload.termos_aceitos) missing.push("termos_aceitos");
-
-    if (missing.length) {
-      return res
-        .status(400)
-        .json({ ok: false, error: `Campos obrigatórios ausentes: ${missing.join(", ")}` });
-    }
-
-    // Anexos (em memória)
-    const files = (req.files || []).map((f) => ({
-      filename: f.originalname,
-      buffer: f.buffer,
-    }));
-
-    const FROM = `adm@countrysidehub.com`; // Remetente do seu domínio Zoho
-
-    // 1) E-mail p/ fiscalização/admin
-    const adminHtml = buildAdminHtml(payload, req.files);
-    const adminMsg = buildZohoMessage({
-      from: FROM,
-      to: `adm@countrysidehub.com`, // pode mudar
-      subject: `Novo anúncio publicado - ${sanitize(payload.produto || "Produto")}`,
-      html: adminHtml,
-      files,
-    });
-    await sendViaZoho(adminMsg);
-
-    // 2) E-mail boas-vindas para o vendedor
-    const welcomeHtml = buildWelcomeHtml(payload);
-    const welcomeMsg = buildZohoMessage({
-      from: FROM,
-      to: payload.email,
-      subject: `Bem-vindo(a) ao ${SITE_NAME}! Seu anúncio está no ar`,
-      html: welcomeHtml,
-    });
-    await sendViaZoho(welcomeMsg);
-
-    res.status(200).json({ ok: true, message: "Anúncio publicado e e-mails enviados." });
-  } catch (err) {
-    console.error("[ERRO /api/publish]", err?.response?.data || err?.message || err);
-    res
-      .status(500)
-      .json({ ok: false, error: "Falha interna ao processar o anúncio. Tente novamente." });
+  // cria token de verificação
+  const token = uuid();
+  if (pool){
+    await pool.query('insert into verify_tokens(token, user_email) values($1,$2)', [token, email]);
   }
-};
+  // envia e-mail
+  await transporter.sendMail({
+    from: MAIL_FROM,
+    to: email,
+    subject: 'Confirme seu e-mail – Countryside Hub',
+    html: `
+      <p>Olá${name ? ' ' + name.split(' ')[0] : ''}!</p>
+      <p>Confirme seu e-mail clicando no link abaixo:</p>
+      <p><a href="${PUBLIC_URL}/auth/verify?token=${token}">Confirmar e-mail</a></p>
+      <p>Se não foi você, ignore esta mensagem.</p>
+    `
+  });
 
-app.post("/publish", upload.array("docs[]", 5), publishHandler);
-app.post("/api/publish", upload.array("docs[]", 5), publishHandler);
-
-// 404 padrão
-app.use((_req, res) => {
-  res.status(404).json({ ok: false, error: "Rota não encontrada." });
+  // cria sessão já (pode exigir verificação antes de liberar ações sensíveis)
+  setSession(res, { email });
+  res.json({ ok: true, pendingVerification: true });
 });
 
-// Sobe servidor
+// verify e-mail
+app.get('/auth/verify', async (req, res) => {
+  const { token } = req.query;
+  if (!token || !pool) return res.status(400).send('Invalid');
+
+  const { rows } = await pool.query('select user_email from verify_tokens where token = $1', [token]);
+  if (!rows.length) return res.status(400).send('Token inválido ou expirado');
+
+  const email = rows[0].user_email;
+  await pool.query('update users set verified=true where email=$1', [email]);
+  await pool.query('delete from verify_tokens where token=$1', [token]);
+
+  res.send('E-mail verificado com sucesso. Você já pode fechar esta aba e voltar ao site.');
+});
+
+// login
+app.post('/auth/login', async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'email_password_required' });
+
+  if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+  const { rows } = await pool.query('select email, password_hash, verified, name from users where email=$1', [email]);
+  if (!rows.length) return res.status(401).json({ error: 'invalid_credentials' });
+
+  const ok = await bcrypt.compare(password, rows[0].password_hash);
+  if (!ok) return res.status(401).json({ error: 'invalid_credentials' });
+
+  setSession(res, { email });
+  res.json({ ok: true, verified: rows[0].verified, name: rows[0].name });
+});
+
+// me
+app.get('/auth/me', auth, async (req, res) => {
+  if (!pool) return res.json({ email: req.user.email, verified: false });
+  const { rows } = await pool.query('select email, verified, name, phone from users where email=$1', [req.user.email]);
+  res.json(rows[0] || { email: req.user.email, verified: false });
+});
+
+// logout
+app.post('/auth/logout', (req, res) => {
+  clearSession(res);
+  res.json({ ok: true });
+});
+
+// request reset
+app.post('/auth/request-reset', async (req, res) => {
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'email_required' });
+
+  const token = uuid();
+  if (pool){
+    await pool.query('insert into reset_tokens(token, user_email) values($1,$2)', [token, email]);
+  }
+
+  await transporter.sendMail({
+    from: MAIL_FROM,
+    to: email,
+    subject: 'Redefinição de senha – Countryside Hub',
+    html: `
+      <p>Para redefinir sua senha clique no link:</p>
+      <p><a href="${PUBLIC_URL}/auth/reset?token=${token}">Redefinir senha</a></p>
+    `
+  });
+
+  res.json({ ok: true });
+});
+
+// reset (GET exibe simples, POST aplica)
+app.get('/auth/reset', async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).send('Token inválido');
+  res.send(`
+    <form method="POST" action="/auth/reset">
+      <input type="hidden" name="token" value="${token}" />
+      <label>Nova senha</label><br/>
+      <input type="password" name="password" required/>
+      <button type="submit">Salvar</button>
+    </form>
+  `);
+});
+app.use(express.urlencoded({ extended: true }));
+app.post('/auth/reset', async (req, res) => {
+  const { token, password } = req.body;
+  if (!pool) return res.status(500).send('DB indisponível');
+
+  const { rows } = await pool.query('select user_email from reset_tokens where token=$1', [token]);
+  if (!rows.length) return res.status(400).send('Token inválido');
+
+  const hash = await bcrypt.hash(password, 10);
+  await pool.query('update users set password_hash=$1 where email=$2', [hash, rows[0].user_email]);
+  await pool.query('delete from reset_tokens where token=$1', [token]);
+
+  res.send('Senha alterada. Você já pode fechar esta aba e entrar novamente.');
+});
+
+// ===== REVIEWS (perfis de vendedor) ===== //
+// criar avaliação
+app.post('/reviews', auth, async (req, res) => {
+  const { sellerEmail, rating, title, body } = req.body || {};
+  if (!sellerEmail || !rating) return res.status(400).json({ error: 'missing_fields' });
+  if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+
+  await pool.query(
+    'insert into reviews (seller_email, reviewer_email, rating, title, body) values ($1,$2,$3,$4,$5)',
+    [sellerEmail, req.user.email, Number(rating), title||null, body||null]
+  );
+  res.json({ ok: true });
+});
+
+// listar avaliações do vendedor
+app.get('/reviews/:sellerEmail', async (req, res) => {
+  if (!pool) return res.json([]);
+  const { rows } = await pool.query(
+    'select rating, title, body, reviewer_email, created_at from reviews where seller_email=$1 and approved=true order by created_at desc limit 50',
+    [req.params.sellerEmail]
+  );
+  res.json(rows);
+});
+
 app.listen(PORT, () => {
-  console.log(`[OK] ${SITE_NAME} publisher rodando na porta ${PORT}`);
+  console.log(`CSH auth up on :${PORT}`);
 });
