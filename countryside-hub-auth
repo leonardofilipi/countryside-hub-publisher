@@ -1,0 +1,91 @@
+{
+  "name": "csh-auth",
+  "type": "module",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.13"
+  }
+}
+import express from "express";
+import cors from "cors";
+import cookieParser from "cookie-parser";
+import dotenv from "dotenv";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+
+dotenv.config();
+const app = express();
+app.use(express.json());
+app.use(cookieParser());
+
+// CORS – ajuste para seu domínio
+const ORIGIN = process.env.CORS_ORIGIN || "https://countrysidehub.com";
+app.use(cors({ origin: ORIGIN, credentials: true }));
+
+// “Banco” simples em memória (trocaremos por Postgres/Mongo depois)
+const db = { users: [] };
+
+function sign(user) {
+  return jwt.sign({ id: user.id, email: user.email, name: user.name }, process.env.JWT_SECRET, { expiresIn: "7d" });
+}
+function auth(req, res, next) {
+  const token = req.cookies.hub_token;
+  if (!token) return res.status(401).json({ error: "not_auth" });
+  try {
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: "bad_token" });
+  }
+}
+
+app.post("/auth/register", async (req, res) => {
+  const { name, email, password } = req.body || {};
+  if (!name || !email || !password) return res.status(400).json({ error: "missing_fields" });
+  const exists = db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (exists) return res.status(409).json({ error: "email_exists" });
+  const hash = await bcrypt.hash(password, 10);
+  const user = { id: String(Date.now()), name, email, pass: hash };
+  db.users.push(user);
+  return res.json({ ok: true });
+});
+
+app.post("/auth/login", async (req, res) => {
+  const { email, password } = req.body || {};
+  const user = db.users.find(u => u.email.toLowerCase() === String(email).toLowerCase());
+  if (!user) return res.status(401).json({ error: "invalid_login" });
+  const ok = await bcrypt.compare(password, user.pass);
+  if (!ok) return res.status(401).json({ error: "invalid_login" });
+  const token = sign(user);
+  res.cookie("hub_token", token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: true,
+    maxAge: 7 * 24 * 3600 * 1000
+  });
+  return res.json({ ok: true });
+});
+
+app.post("/auth/logout", (req, res) => {
+  res.clearCookie("hub_token", { httpOnly: true, sameSite: "lax", secure: true });
+  res.json({ ok: true });
+});
+
+app.get("/auth/me", auth, (req, res) => {
+  // Aqui você poderia juntar dados do seller_profile (avatar/handle)
+  res.json({ id: req.user.id, name: req.user.name, email: req.user.email });
+});
+
+app.get("/", (_, res) => res.send("OK"));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log("Auth running on", PORT));
