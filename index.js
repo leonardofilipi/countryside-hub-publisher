@@ -253,3 +253,83 @@ app.get('/reviews/:sellerEmail', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`CSH auth up on :${PORT}`);
 });
+// ======= AGGREGATION & SHOPIFY METAOBJECT UPDATE ======= //
+const { SHOPIFY_STORE, SHOPIFY_ADMIN_TOKEN } = process.env;
+
+async function shopifyGraphQL(query, variables={}){
+  if(!SHOPIFY_STORE || !SHOPIFY_ADMIN_TOKEN) {
+    throw new Error('Shopify Admin API não configurada');
+  }
+  const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2024-07/graphql.json`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Shopify-Access-Token': SHOPIFY_ADMIN_TOKEN
+    },
+    body: JSON.stringify({ query, variables })
+  });
+  const j = await r.json();
+  if (j.errors || j.data?.metaobjectUpdate?.userErrors?.length) {
+    console.error('Shopify GraphQL error', JSON.stringify(j));
+    throw new Error('Shopify GraphQL error');
+  }
+  return j.data;
+}
+
+// Retorna média e contagem a partir do Postgres
+app.get('/seller/aggregate/:email', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+  const { rows } = await pool.query(
+    'select coalesce(avg(rating),0)::float as avg, count(*)::int as cnt from reviews where seller_email=$1 and approved=true',
+    [req.params.email]
+  );
+  res.json(rows[0]);
+});
+
+// Recalcula e grava no metaobject (procure entrada pelo campo de e-mail)
+app.post('/seller/recompute', async (req, res) => {
+  try {
+    const { sellerEmail } = req.body || {};
+    if (!sellerEmail) return res.status(400).json({ error: 'sellerEmail_required' });
+    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+
+    // 1) média/contagem
+    const { rows } = await pool.query(
+      'select coalesce(avg(rating),0)::float as avg, count(*)::int as cnt from reviews where seller_email=$1 and approved=true',
+      [sellerEmail]
+    );
+    const avg = Number(rows[0].avg || 0);
+    const cnt = Number(rows[0].cnt || 0);
+
+    // 2) localizar metaobject do vendedor pelo campo de e-mail
+    const Q_FIND = `
+      query($q: String!){
+        metaobjects(type: "perfil_do_vendedor", first: 1, query: $q){
+          nodes { id handle }
+        }
+      }`;
+    const findQ = `contact_email_e_mail_de_contato:"${sellerEmail.replace(/"/g,'\\"')}"`;
+    const found = await shopifyGraphQL(Q_FIND, { q: findQ });
+    const node = found.metaobjects.nodes[0];
+    if (!node) return res.status(404).json({ error: 'metaobject_not_found' });
+
+    // 3) atualizar campos
+    const M_UPDATE = `
+      mutation($id: ID!, $fields: [MetaobjectFieldInput!]!){
+        metaobjectUpdate(id: $id, metaobject: { fields: $fields }){
+          metaobject { id }
+          userErrors { field message }
+        }
+      }`;
+    const fields = [
+      { key: "rating_nota_media", value: avg.toFixed(2) },
+      { key: "numero_de_avaliacoes", value: String(cnt) }
+    ];
+    await shopifyGraphQL(M_UPDATE, { id: node.id, fields });
+
+    res.json({ ok: true, avg, cnt, handle: node.handle });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'update_failed' });
+  }
+});
