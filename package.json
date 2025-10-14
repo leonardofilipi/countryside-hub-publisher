@@ -29,3 +29,11 @@
     "uuid": "^9.0.1"
   }
 }
+{
+  "name": "csh-auth",
+  "version": "1.0.0",
+  "engines": { "node": "20.x" },
+  "scripts": {
+    "start": "node index.js"
+  }
+}
