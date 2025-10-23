@@ -1,0 +1,13 @@
+{
+  "rootAll": { "slug": "todas-as-categorias", "name": "Todas as Categorias", "url": "/collections/all" },
+  "items": [
+    { "name": "Animais", "slug": "animais", "url": "/collections/animais" },
+    { "name": "Aves", "slug": "aves", "url": "/collections/aves", "parent": "animais" },
+    { "name": "Cavalos", "slug": "cavalos", "url": "/collections/cavalos", "parent": "animais" },
+
+    { "name": "Equipamentos", "slug": "equipamentos", "url": "/collections/equipamentos" },
+    { "name": "Tratores", "slug": "tratores", "url": "/collections/tratores", "parent": "equipamentos" },
+
+    { "name": "Serviços Rurais", "slug": "servicos-rurais", "url": "/collections/servicos-rurais" }
+  ]
+}
