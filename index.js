@@ -363,9 +363,8 @@ import express from "express";
 import cors from "cors";
 
 const app = express();
-app.use(cors()); // allow Shopify to fetch
+app.use(cors());
 
-// Data (same schema as GitHub option)
 const DATA = {
   rootAll: { slug: "todas-as-categorias", name: "Todas as Categorias", url: "/collections/all" },
   items: [
@@ -386,4 +385,4 @@ app.get("/catfinder.json", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`CatFinder JSON on :${PORT}`));
+app.listen(PORT, () => console.log(`✅ CatFinder JSON ready on port ${PORT}`));
