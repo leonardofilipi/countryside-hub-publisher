@@ -359,3 +359,31 @@ app.post('/seller/recompute', async (req, res) => {
     res.status(500).json({ error: 'update_failed' });
   }
 });
+import express from "express";
+import cors from "cors";
+
+const app = express();
+app.use(cors()); // allow Shopify to fetch
+
+// Data (same schema as GitHub option)
+const DATA = {
+  rootAll: { slug: "todas-as-categorias", name: "Todas as Categorias", url: "/collections/all" },
+  items: [
+    { name: "Animais", slug: "animais", url: "/collections/animais" },
+    { name: "Aves", slug: "aves", url: "/collections/aves", parent: "animais" },
+    { name: "Cavalos", slug: "cavalos", url: "/collections/cavalos", parent: "animais" },
+
+    { name: "Equipamentos", slug: "equipamentos", url: "/collections/equipamentos" },
+    { name: "Tratores", slug: "tratores", url: "/collections/tratores", parent: "equipamentos" },
+
+    { name: "Serviços Rurais", slug: "servicos-rurais", url: "/collections/servicos-rurais" }
+  ]
+};
+
+app.get("/catfinder.json", (req, res) => {
+  res.set("Cache-Control", "no-cache");
+  res.json(DATA);
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`CatFinder JSON on :${PORT}`));
