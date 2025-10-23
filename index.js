@@ -338,6 +338,58 @@ app.get('/catfinder.json', (req, res) => {
     res.status(500).json({ error: 'catfinder_read_failed' });
   }
 });
+// Recebe anúncios do formulário do vendedor
+app.post('/vendor/listing', async (req, res) => {
+  try {
+    const {
+      title, price, description, location, contactEmail,
+      category, subcategory, item,
+      category_url, subcategory_url, item_url
+    } = req.body || {};
+
+    // (opcional) validar campos mínimos
+    if (!title || !contactEmail || !category) {
+      return res.status(400).json({ error: 'missing_required_fields' });
+    }
+
+    // (opcional) salvar no Postgres
+    if (pool) {
+      await pool.query(`
+        create table if not exists vendor_listings (
+          id uuid primary key default gen_random_uuid(),
+          title text not null,
+          price numeric(12,2),
+          description text,
+          location text,
+          contact_email text,
+          category_slug text,
+          subcategory_slug text,
+          item_slug text,
+          category_url text,
+          subcategory_url text,
+          item_url text,
+          created_at timestamptz default now()
+        );`);
+      await pool.query(`
+        insert into vendor_listings
+          (title, price, description, location, contact_email,
+           category_slug, subcategory_slug, item_slug,
+           category_url, subcategory_url, item_url)
+        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11);
+      `, [title, price || null, description || null, location || null, contactEmail,
+          category || null, subcategory || null, item || null,
+          category_url || null, subcategory_url || null, item_url || null]);
+    }
+
+    // (opcional) enviar e-mail de notificação
+    // await transporter.sendMail({ from: MAIL_FROM, to: MAIL_FROM, subject: 'Novo anúncio', text: JSON.stringify(req.body, null, 2) });
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'listing_failed' });
+  }
+});
 
 // ====== START ======
 app.listen(PORT, () => {
