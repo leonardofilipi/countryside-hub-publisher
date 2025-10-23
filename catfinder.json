@@ -1,19 +1,1101 @@
-// ====== CatFinder JSON endpoint (público) ======
-app.get('/catfinder.json', (req, res) => {
-  try {
-    // CORS SOLTO SÓ PARA ESTE RECURSO (GET público)
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Vary', 'Origin');
-
-    const j = fs.readFileSync('./data/catfinder.json', 'utf8');
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    // evita cache no editor/loja
-    res.setHeader('Cache-Control', 'no-cache');
-    res.status(200).send(j);
-  } catch (e) {
-    console.error('Erro lendo data/catfinder.json:', e?.message);
-    res.status(500).json({ error: 'catfinder_read_failed' });
-  }
-});
+{
+  "rootAll": {
+    "slug": "todas-as-categorias",
+    "name": "Todas as Categorias",
+    "url": "/collections/all"
+  },
+  "categories": [
+    {
+      "name": "Animais",
+      "slug": "animais",
+      "url": "/collections/animais",
+      "children": [
+        {
+          "name": "Aves",
+          "slug": "aves",
+          "url": "/collections/aves",
+          "items": [
+            {
+              "name": "Caipiras",
+              "slug": "caipiras",
+              "url": "/collections/aves?filter.p.tag=caipiras"
+            },
+            {
+              "name": "Frango de corte",
+              "slug": "frango-de-corte",
+              "url": "/collections/aves?filter.p.tag=frango-de-corte"
+            },
+            {
+              "name": "Gansos",
+              "slug": "gansos",
+              "url": "/collections/aves?filter.p.tag=gansos"
+            },
+            {
+              "name": "Patos",
+              "slug": "patos",
+              "url": "/collections/aves?filter.p.tag=patos"
+            },
+            {
+              "name": "Perus",
+              "slug": "perus",
+              "url": "/collections/aves?filter.p.tag=perus"
+            },
+            {
+              "name": "Poedeiras",
+              "slug": "poedeiras",
+              "url": "/collections/aves?filter.p.tag=poedeiras"
+            }
+          ]
+        },
+        {
+          "name": "Bovinos",
+          "slug": "bovinos",
+          "url": "/collections/bovinos",
+          "items": [
+            {
+              "name": "Angus",
+              "slug": "angus",
+              "url": "/collections/bovinos?filter.p.tag=angus"
+            },
+            {
+              "name": "Brahman",
+              "slug": "brahman",
+              "url": "/collections/bovinos?filter.p.tag=brahman"
+            },
+            {
+              "name": "Girolando",
+              "slug": "girolando",
+              "url": "/collections/bovinos?filter.p.tag=girolando"
+            },
+            {
+              "name": "Holandês",
+              "slug": "holandes",
+              "url": "/collections/bovinos?filter.p.tag=holandes"
+            },
+            {
+              "name": "Nelore",
+              "slug": "nelore",
+              "url": "/collections/bovinos?filter.p.tag=nelore"
+            }
+          ]
+        },
+        {
+          "name": "Caprinos",
+          "slug": "caprinos",
+          "url": "/collections/caprinos",
+          "items": [
+            {
+              "name": "Anglo-Nubiano",
+              "slug": "anglo-nubiano",
+              "url": "/collections/caprinos?filter.p.tag=anglo-nubiano"
+            },
+            {
+              "name": "Boer",
+              "slug": "boer",
+              "url": "/collections/caprinos?filter.p.tag=boer"
+            },
+            {
+              "name": "Mestiços",
+              "slug": "mesticos",
+              "url": "/collections/caprinos?filter.p.tag=mesticos"
+            },
+            {
+              "name": "Saanen",
+              "slug": "saanen",
+              "url": "/collections/caprinos?filter.p.tag=saanen"
+            }
+          ]
+        },
+        {
+          "name": "Cavalos",
+          "slug": "cavalos",
+          "url": "/collections/cavalos",
+          "items": [
+            {
+              "name": "Appaloosa",
+              "slug": "appaloosa",
+              "url": "/collections/cavalos?filter.p.tag=appaloosa"
+            },
+            {
+              "name": "Crioulo",
+              "slug": "crioulo",
+              "url": "/collections/cavalos?filter.p.tag=crioulo"
+            },
+            {
+              "name": "Mangalarga Marchador",
+              "slug": "mangalarga-marchador",
+              "url": "/collections/cavalos?filter.p.tag=mangalarga-marchador"
+            },
+            {
+              "name": "Puro Sangue Inglês",
+              "slug": "puro-sangue-ingles",
+              "url": "/collections/cavalos?filter.p.tag=puro-sangue-ingles"
+            },
+            {
+              "name": "Quarto de Milha",
+              "slug": "quarto-de-milha",
+              "url": "/collections/cavalos?filter.p.tag=quarto-de-milha"
+            }
+          ]
+        },
+        {
+          "name": "Cães de trabalho",
+          "slug": "caes-de-trabalho",
+          "url": "/collections/caes-de-trabalho",
+          "items": [
+            {
+              "name": "Australian Cattle Dog",
+              "slug": "australian-cattle-dog",
+              "url": "/collections/caes-de-trabalho?filter.p.tag=australian-cattle-dog"
+            },
+            {
+              "name": "Border Collie",
+              "slug": "border-collie",
+              "url": "/collections/caes-de-trabalho?filter.p.tag=border-collie"
+            },
+            {
+              "name": "Kangal",
+              "slug": "kangal",
+              "url": "/collections/caes-de-trabalho?filter.p.tag=kangal"
+            },
+            {
+              "name": "Outros cães de pastoreio",
+              "slug": "outros-caes-de-pastoreio",
+              "url": "/collections/caes-de-trabalho?filter.p.tag=outros-caes-de-pastoreio"
+            }
+          ]
+        },
+        {
+          "name": "Ovinos",
+          "slug": "ovinos",
+          "url": "/collections/ovinos",
+          "items": [
+            {
+              "name": "Dorper",
+              "slug": "dorper",
+              "url": "/collections/ovinos?filter.p.tag=dorper"
+            },
+            {
+              "name": "Merino",
+              "slug": "merino",
+              "url": "/collections/ovinos?filter.p.tag=merino"
+            },
+            {
+              "name": "Santa Inês",
+              "slug": "santa-ines",
+              "url": "/collections/ovinos?filter.p.tag=santa-ines"
+            },
+            {
+              "name": "Suffolk",
+              "slug": "suffolk",
+              "url": "/collections/ovinos?filter.p.tag=suffolk"
+            }
+          ]
+        },
+        {
+          "name": "Suínos",
+          "slug": "suinos",
+          "url": "/collections/suinos",
+          "items": [
+            {
+              "name": "Duroc",
+              "slug": "duroc",
+              "url": "/collections/suinos?filter.p.tag=duroc"
+            },
+            {
+              "name": "Landrace",
+              "slug": "landrace",
+              "url": "/collections/suinos?filter.p.tag=landrace"
+            },
+            {
+              "name": "Large White",
+              "slug": "large-white",
+              "url": "/collections/suinos?filter.p.tag=large-white"
+            },
+            {
+              "name": "Pietrain",
+              "slug": "pietrain",
+              "url": "/collections/suinos?filter.p.tag=pietrain"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Apicultura",
+      "slug": "apicultura",
+      "url": "/collections/apicultura",
+      "children": [
+        {
+          "name": "Acessórios",
+          "slug": "acessorios",
+          "url": "/collections/acessorios",
+          "items": [
+            {
+              "name": "Fumigador",
+              "slug": "fumigador",
+              "url": "/collections/acessorios?filter.p.tag=fumigador"
+            },
+            {
+              "name": "Luvas",
+              "slug": "luvas",
+              "url": "/collections/acessorios?filter.p.tag=luvas"
+            },
+            {
+              "name": "Macacão",
+              "slug": "macacao",
+              "url": "/collections/acessorios?filter.p.tag=macacao"
+            },
+            {
+              "name": "Pás e carretilhas",
+              "slug": "pas-e-carretilhas",
+              "url": "/collections/acessorios?filter.p.tag=pas-e-carretilhas"
+            }
+          ]
+        },
+        {
+          "name": "Colmeias e Núcleos",
+          "slug": "colmeias-e-nucleos",
+          "url": "/collections/colmeias-e-nucleos",
+          "items": [
+            {
+              "name": "Caixas racionais",
+              "slug": "caixas-racionais",
+              "url": "/collections/colmeias-e-nucleos?filter.p.tag=caixas-racionais"
+            },
+            {
+              "name": "Langstroth",
+              "slug": "langstroth",
+              "url": "/collections/colmeias-e-nucleos?filter.p.tag=langstroth"
+            },
+            {
+              "name": "Núcleo Isca",
+              "slug": "nucleo-isca",
+              "url": "/collections/colmeias-e-nucleos?filter.p.tag=nucleo-isca"
+            }
+          ]
+        },
+        {
+          "name": "Produtos",
+          "slug": "produtos",
+          "url": "/collections/produtos",
+          "items": [
+            {
+              "name": "Cera",
+              "slug": "cera",
+              "url": "/collections/produtos?filter.p.tag=cera"
+            },
+            {
+              "name": "Mel",
+              "slug": "mel",
+              "url": "/collections/produtos?filter.p.tag=mel"
+            },
+            {
+              "name": "Própolis",
+              "slug": "propolis",
+              "url": "/collections/produtos?filter.p.tag=propolis"
+            },
+            {
+              "name": "Pólen",
+              "slug": "polen",
+              "url": "/collections/produtos?filter.p.tag=polen"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Equipamentos",
+      "slug": "equipamentos",
+      "url": "/collections/equipamentos",
+      "children": [
+        {
+          "name": "Ambiência",
+          "slug": "ambiencia",
+          "url": "/collections/ambiencia",
+          "items": [
+            {
+              "name": "Nebulizadores",
+              "slug": "nebulizadores",
+              "url": "/collections/ambiencia?filter.p.tag=nebulizadores"
+            },
+            {
+              "name": "Sombrite e lonas",
+              "slug": "sombrite-e-lonas",
+              "url": "/collections/ambiencia?filter.p.tag=sombrite-e-lonas"
+            },
+            {
+              "name": "Ventiladores",
+              "slug": "ventiladores",
+              "url": "/collections/ambiencia?filter.p.tag=ventiladores"
+            }
+          ]
+        },
+        {
+          "name": "Armazenagem",
+          "slug": "armazenagem",
+          "url": "/collections/armazenagem",
+          "items": [
+            {
+              "name": "Moegas",
+              "slug": "moegas",
+              "url": "/collections/armazenagem?filter.p.tag=moegas"
+            },
+            {
+              "name": "Silos",
+              "slug": "silos",
+              "url": "/collections/armazenagem?filter.p.tag=silos"
+            },
+            {
+              "name": "Tulhas",
+              "slug": "tulhas",
+              "url": "/collections/armazenagem?filter.p.tag=tulhas"
+            }
+          ]
+        },
+        {
+          "name": "Cercas e Manejo",
+          "slug": "cercas-e-manejo",
+          "url": "/collections/cercas-e-manejo",
+          "items": [
+            {
+              "name": "Arame e mourões",
+              "slug": "arame-e-mouroes",
+              "url": "/collections/cercas-e-manejo?filter.p.tag=arame-e-mouroes"
+            },
+            {
+              "name": "Cercas elétricas",
+              "slug": "cercas-eletricas",
+              "url": "/collections/cercas-e-manejo?filter.p.tag=cercas-eletricas"
+            },
+            {
+              "name": "Portas e cancelas",
+              "slug": "portas-e-cancelas",
+              "url": "/collections/cercas-e-manejo?filter.p.tag=portas-e-cancelas"
+            }
+          ]
+        },
+        {
+          "name": "Ordenha e Leite",
+          "slug": "ordenha-e-leite",
+          "url": "/collections/ordenha-e-leite",
+          "items": [
+            {
+              "name": "Lactômetros",
+              "slug": "lactometros",
+              "url": "/collections/ordenha-e-leite?filter.p.tag=lactometros"
+            },
+            {
+              "name": "Ordenhadeiras",
+              "slug": "ordenhadeiras",
+              "url": "/collections/ordenha-e-leite?filter.p.tag=ordenhadeiras"
+            },
+            {
+              "name": "Resfriadores de leite",
+              "slug": "resfriadores-de-leite",
+              "url": "/collections/ordenha-e-leite?filter.p.tag=resfriadores-de-leite"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Implementos",
+      "slug": "implementos",
+      "url": "/collections/implementos",
+      "children": [
+        {
+          "name": "Forrageiros",
+          "slug": "forrageiros",
+          "url": "/collections/forrageiros",
+          "items": [
+            {
+              "name": "Enfardadeira",
+              "slug": "enfardadeira",
+              "url": "/collections/forrageiros?filter.p.tag=enfardadeira"
+            },
+            {
+              "name": "Enleirador",
+              "slug": "enleirador",
+              "url": "/collections/forrageiros?filter.p.tag=enleirador"
+            },
+            {
+              "name": "Ensiladeira",
+              "slug": "ensiladeira",
+              "url": "/collections/forrageiros?filter.p.tag=ensiladeira"
+            },
+            {
+              "name": "Segadora",
+              "slug": "segadora",
+              "url": "/collections/forrageiros?filter.p.tag=segadora"
+            }
+          ]
+        },
+        {
+          "name": "Pecuária",
+          "slug": "pecuaria",
+          "url": "/collections/pecuaria",
+          "items": [
+            {
+              "name": "Balança bovina",
+              "slug": "balanca-bovina",
+              "url": "/collections/pecuaria?filter.p.tag=balanca-bovina"
+            },
+            {
+              "name": "Bebedouros",
+              "slug": "bebedouros",
+              "url": "/collections/pecuaria?filter.p.tag=bebedouros"
+            },
+            {
+              "name": "Bretes e troncos",
+              "slug": "bretes-e-troncos",
+              "url": "/collections/pecuaria?filter.p.tag=bretes-e-troncos"
+            },
+            {
+              "name": "Cochos",
+              "slug": "cochos",
+              "url": "/collections/pecuaria?filter.p.tag=cochos"
+            }
+          ]
+        },
+        {
+          "name": "Preparo de solo",
+          "slug": "preparo-de-solo",
+          "url": "/collections/preparo-de-solo",
+          "items": [
+            {
+              "name": "Arado",
+              "slug": "arado",
+              "url": "/collections/preparo-de-solo?filter.p.tag=arado"
+            },
+            {
+              "name": "Grade aradora",
+              "slug": "grade-aradora",
+              "url": "/collections/preparo-de-solo?filter.p.tag=grade-aradora"
+            },
+            {
+              "name": "Grade niveladora",
+              "slug": "grade-niveladora",
+              "url": "/collections/preparo-de-solo?filter.p.tag=grade-niveladora"
+            },
+            {
+              "name": "Subsolador",
+              "slug": "subsolador",
+              "url": "/collections/preparo-de-solo?filter.p.tag=subsolador"
+            }
+          ]
+        },
+        {
+          "name": "Transporte",
+          "slug": "transporte",
+          "url": "/collections/transporte",
+          "items": [
+            {
+              "name": "Carreta agrícola",
+              "slug": "carreta-agricola",
+              "url": "/collections/transporte?filter.p.tag=carreta-agricola"
+            },
+            {
+              "name": "Graneleira",
+              "slug": "graneleira",
+              "url": "/collections/transporte?filter.p.tag=graneleira"
+            },
+            {
+              "name": "Plataforma",
+              "slug": "plataforma",
+              "url": "/collections/transporte?filter.p.tag=plataforma"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Imóveis Rurais",
+      "slug": "imoveis-rurais",
+      "url": "/collections/imoveis-rurais",
+      "children": [
+        {
+          "name": "Estruturas",
+          "slug": "estruturas",
+          "url": "/collections/estruturas",
+          "items": [
+            {
+              "name": "Currais",
+              "slug": "currais",
+              "url": "/collections/estruturas?filter.p.tag=currais"
+            },
+            {
+              "name": "Galpões",
+              "slug": "galpoes",
+              "url": "/collections/estruturas?filter.p.tag=galpoes"
+            },
+            {
+              "name": "Lotes com água/energia",
+              "slug": "lotes-com-agua-energia",
+              "url": "/collections/estruturas?filter.p.tag=lotes-com-agua-energia"
+            }
+          ]
+        },
+        {
+          "name": "Propriedades",
+          "slug": "propriedades",
+          "url": "/collections/propriedades",
+          "items": [
+            {
+              "name": "Arrendamentos",
+              "slug": "arrendamentos",
+              "url": "/collections/propriedades?filter.p.tag=arrendamentos"
+            },
+            {
+              "name": "Fazendas",
+              "slug": "fazendas",
+              "url": "/collections/propriedades?filter.p.tag=fazendas"
+            },
+            {
+              "name": "Sítios/Chácaras",
+              "slug": "sitios-chacaras",
+              "url": "/collections/propriedades?filter.p.tag=sitios-chacaras"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Irrigação",
+      "slug": "irrigacao",
+      "url": "/collections/irrigacao",
+      "children": [
+        {
+          "name": "Automação",
+          "slug": "automacao",
+          "url": "/collections/automacao",
+          "items": [
+            {
+              "name": "Controladores",
+              "slug": "controladores",
+              "url": "/collections/automacao?filter.p.tag=controladores"
+            },
+            {
+              "name": "Sensores de umidade",
+              "slug": "sensores-de-umidade",
+              "url": "/collections/automacao?filter.p.tag=sensores-de-umidade"
+            },
+            {
+              "name": "Válvulas elétricas",
+              "slug": "valvulas-eletricas",
+              "url": "/collections/automacao?filter.p.tag=valvulas-eletricas"
+            }
+          ]
+        },
+        {
+          "name": "Componentes",
+          "slug": "componentes",
+          "url": "/collections/componentes",
+          "items": [
+            {
+              "name": "Bombas",
+              "slug": "bombas",
+              "url": "/collections/componentes?filter.p.tag=bombas"
+            },
+            {
+              "name": "Conexões",
+              "slug": "conexoes",
+              "url": "/collections/componentes?filter.p.tag=conexoes"
+            },
+            {
+              "name": "Filtros",
+              "slug": "filtros",
+              "url": "/collections/componentes?filter.p.tag=filtros"
+            },
+            {
+              "name": "Mangueiras e tubos",
+              "slug": "mangueiras-e-tubos",
+              "url": "/collections/componentes?filter.p.tag=mangueiras-e-tubos"
+            }
+          ]
+        },
+        {
+          "name": "Sistemas",
+          "slug": "sistemas",
+          "url": "/collections/sistemas",
+          "items": [
+            {
+              "name": "Aspersão",
+              "slug": "aspersao",
+              "url": "/collections/sistemas?filter.p.tag=aspersao"
+            },
+            {
+              "name": "Gotejamento",
+              "slug": "gotejamento",
+              "url": "/collections/sistemas?filter.p.tag=gotejamento"
+            },
+            {
+              "name": "Microaspersão",
+              "slug": "microaspersao",
+              "url": "/collections/sistemas?filter.p.tag=microaspersao"
+            },
+            {
+              "name": "Pivô fixo/central",
+              "slug": "pivo-fixo-central",
+              "url": "/collections/sistemas?filter.p.tag=pivo-fixo-central"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Máquinas",
+      "slug": "maquinas",
+      "url": "/collections/maquinas",
+      "children": [
+        {
+          "name": "Carregadeiras e Retroescavadeiras",
+          "slug": "carregadeiras-e-retroescavadeiras",
+          "url": "/collections/carregadeiras-e-retroescavadeiras",
+          "items": [
+            {
+              "name": "Articulada",
+              "slug": "articulada",
+              "url": "/collections/carregadeiras-e-retroescavadeiras?filter.p.tag=articulada"
+            },
+            {
+              "name": "Mini",
+              "slug": "mini",
+              "url": "/collections/carregadeiras-e-retroescavadeiras?filter.p.tag=mini"
+            },
+            {
+              "name": "Padrão",
+              "slug": "padrao",
+              "url": "/collections/carregadeiras-e-retroescavadeiras?filter.p.tag=padrao"
+            }
+          ]
+        },
+        {
+          "name": "Colheitadeiras",
+          "slug": "colheitadeiras",
+          "url": "/collections/colheitadeiras",
+          "items": [
+            {
+              "name": "Grande porte",
+              "slug": "grande-porte",
+              "url": "/collections/colheitadeiras?filter.p.tag=grande-porte"
+            },
+            {
+              "name": "Médio porte",
+              "slug": "medio-porte",
+              "url": "/collections/colheitadeiras?filter.p.tag=medio-porte"
+            },
+            {
+              "name": "Pequeno porte",
+              "slug": "pequeno-porte",
+              "url": "/collections/colheitadeiras?filter.p.tag=pequeno-porte"
+            }
+          ]
+        },
+        {
+          "name": "Plantadeiras",
+          "slug": "plantadeiras",
+          "url": "/collections/plantadeiras",
+          "items": [
+            {
+              "name": "10+ linhas",
+              "slug": "10-linhas",
+              "url": "/collections/plantadeiras?filter.p.tag=10-linhas"
+            },
+            {
+              "name": "2–4 linhas",
+              "slug": "2-4-linhas",
+              "url": "/collections/plantadeiras?filter.p.tag=2-4-linhas"
+            },
+            {
+              "name": "5–9 linhas",
+              "slug": "5-9-linhas",
+              "url": "/collections/plantadeiras?filter.p.tag=5-9-linhas"
+            }
+          ]
+        },
+        {
+          "name": "Pulverizadores",
+          "slug": "pulverizadores",
+          "url": "/collections/pulverizadores",
+          "items": [
+            {
+              "name": "Autopropelido",
+              "slug": "autopropelido",
+              "url": "/collections/pulverizadores?filter.p.tag=autopropelido"
+            },
+            {
+              "name": "Barra tratorizada",
+              "slug": "barra-tratorizada",
+              "url": "/collections/pulverizadores?filter.p.tag=barra-tratorizada"
+            },
+            {
+              "name": "Costal",
+              "slug": "costal",
+              "url": "/collections/pulverizadores?filter.p.tag=costal"
+            }
+          ]
+        },
+        {
+          "name": "Tratores",
+          "slug": "tratores",
+          "url": "/collections/tratores",
+          "items": [
+            {
+              "name": "100–150 cv",
+              "slug": "100-150-cv",
+              "url": "/collections/tratores?filter.p.tag=100-150-cv"
+            },
+            {
+              "name": "150+ cv",
+              "slug": "150-cv",
+              "url": "/collections/tratores?filter.p.tag=150-cv"
+            },
+            {
+              "name": "55–75 cv",
+              "slug": "55-75-cv",
+              "url": "/collections/tratores?filter.p.tag=55-75-cv"
+            },
+            {
+              "name": "75–100 cv",
+              "slug": "75-100-cv",
+              "url": "/collections/tratores?filter.p.tag=75-100-cv"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Pets & Companhia Rural",
+      "slug": "pets-companhia-rural",
+      "url": "/collections/pets-companhia-rural",
+      "children": [
+        {
+          "name": "Cães",
+          "slug": "caes",
+          "url": "/collections/caes",
+          "items": [
+            {
+              "name": "Acessórios",
+              "slug": "acessorios",
+              "url": "/collections/caes?filter.p.tag=acessorios"
+            },
+            {
+              "name": "Cães de companhia",
+              "slug": "caes-de-companhia",
+              "url": "/collections/caes?filter.p.tag=caes-de-companhia"
+            },
+            {
+              "name": "Cães de guarda",
+              "slug": "caes-de-guarda",
+              "url": "/collections/caes?filter.p.tag=caes-de-guarda"
+            }
+          ]
+        },
+        {
+          "name": "Gatos",
+          "slug": "gatos",
+          "url": "/collections/gatos",
+          "items": [
+            {
+              "name": "Acessórios",
+              "slug": "acessorios",
+              "url": "/collections/gatos?filter.p.tag=acessorios"
+            },
+            {
+              "name": "Adultos",
+              "slug": "adultos",
+              "url": "/collections/gatos?filter.p.tag=adultos"
+            },
+            {
+              "name": "Filhotes",
+              "slug": "filhotes",
+              "url": "/collections/gatos?filter.p.tag=filhotes"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Rações e Forragens",
+      "slug": "racoes-e-forragens",
+      "url": "/collections/racoes-e-forragens",
+      "children": [
+        {
+          "name": "Aditivos",
+          "slug": "aditivos",
+          "url": "/collections/aditivos",
+          "items": [
+            {
+              "name": "Ionóforos",
+              "slug": "ionoforos",
+              "url": "/collections/aditivos?filter.p.tag=ionoforos"
+            },
+            {
+              "name": "Leveduras",
+              "slug": "leveduras",
+              "url": "/collections/aditivos?filter.p.tag=leveduras"
+            },
+            {
+              "name": "Probióticos",
+              "slug": "probioticos",
+              "url": "/collections/aditivos?filter.p.tag=probioticos"
+            }
+          ]
+        },
+        {
+          "name": "Ração",
+          "slug": "racao",
+          "url": "/collections/racao",
+          "items": [
+            {
+              "name": "Aves",
+              "slug": "aves",
+              "url": "/collections/racao?filter.p.tag=aves"
+            },
+            {
+              "name": "Bovinos de corte",
+              "slug": "bovinos-de-corte",
+              "url": "/collections/racao?filter.p.tag=bovinos-de-corte"
+            },
+            {
+              "name": "Bovinos de leite",
+              "slug": "bovinos-de-leite",
+              "url": "/collections/racao?filter.p.tag=bovinos-de-leite"
+            },
+            {
+              "name": "Equinos",
+              "slug": "equinos",
+              "url": "/collections/racao?filter.p.tag=equinos"
+            },
+            {
+              "name": "Suínos",
+              "slug": "suinos",
+              "url": "/collections/racao?filter.p.tag=suinos"
+            }
+          ]
+        },
+        {
+          "name": "Suplementos",
+          "slug": "suplementos",
+          "url": "/collections/suplementos",
+          "items": [
+            {
+              "name": "Núcleos vitamínicos",
+              "slug": "nucleos-vitaminicos",
+              "url": "/collections/suplementos?filter.p.tag=nucleos-vitaminicos"
+            },
+            {
+              "name": "Proteinados",
+              "slug": "proteinados",
+              "url": "/collections/suplementos?filter.p.tag=proteinados"
+            },
+            {
+              "name": "Sal mineral",
+              "slug": "sal-mineral",
+              "url": "/collections/suplementos?filter.p.tag=sal-mineral"
+            }
+          ]
+        },
+        {
+          "name": "Volumosos",
+          "slug": "volumosos",
+          "url": "/collections/volumosos",
+          "items": [
+            {
+              "name": "Feno Coast Cross",
+              "slug": "feno-coast-cross",
+              "url": "/collections/volumosos?filter.p.tag=feno-coast-cross"
+            },
+            {
+              "name": "Feno Tifton",
+              "slug": "feno-tifton",
+              "url": "/collections/volumosos?filter.p.tag=feno-tifton"
+            },
+            {
+              "name": "Silagem de milho",
+              "slug": "silagem-de-milho",
+              "url": "/collections/volumosos?filter.p.tag=silagem-de-milho"
+            },
+            {
+              "name": "Silagem de sorgo",
+              "slug": "silagem-de-sorgo",
+              "url": "/collections/volumosos?filter.p.tag=silagem-de-sorgo"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sementes",
+      "slug": "sementes",
+      "url": "/collections/sementes",
+      "children": [
+        {
+          "name": "Forrageiras de inverno",
+          "slug": "forrageiras-de-inverno",
+          "url": "/collections/forrageiras-de-inverno",
+          "items": [
+            {
+              "name": "Aveia preta",
+              "slug": "aveia-preta",
+              "url": "/collections/forrageiras-de-inverno?filter.p.tag=aveia-preta"
+            },
+            {
+              "name": "Azevém",
+              "slug": "azevem",
+              "url": "/collections/forrageiras-de-inverno?filter.p.tag=azevem"
+            },
+            {
+              "name": "Trevo",
+              "slug": "trevo",
+              "url": "/collections/forrageiras-de-inverno?filter.p.tag=trevo"
+            }
+          ]
+        },
+        {
+          "name": "Grãos",
+          "slug": "graos",
+          "url": "/collections/graos",
+          "items": [
+            {
+              "name": "Feijão",
+              "slug": "feijao",
+              "url": "/collections/graos?filter.p.tag=feijao"
+            },
+            {
+              "name": "Milho",
+              "slug": "milho",
+              "url": "/collections/graos?filter.p.tag=milho"
+            },
+            {
+              "name": "Soja",
+              "slug": "soja",
+              "url": "/collections/graos?filter.p.tag=soja"
+            },
+            {
+              "name": "Sorgo",
+              "slug": "sorgo",
+              "url": "/collections/graos?filter.p.tag=sorgo"
+            },
+            {
+              "name": "Trigo",
+              "slug": "trigo",
+              "url": "/collections/graos?filter.p.tag=trigo"
+            }
+          ]
+        },
+        {
+          "name": "Pastagens",
+          "slug": "pastagens",
+          "url": "/collections/pastagens",
+          "items": [
+            {
+              "name": "Brachiaria brizantha",
+              "slug": "brachiaria-brizantha",
+              "url": "/collections/pastagens?filter.p.tag=brachiaria-brizantha"
+            },
+            {
+              "name": "Brachiaria ruziziensis",
+              "slug": "brachiaria-ruziziensis",
+              "url": "/collections/pastagens?filter.p.tag=brachiaria-ruziziensis"
+            },
+            {
+              "name": "Panicum (Mombaça)",
+              "slug": "panicum-mombaca",
+              "url": "/collections/pastagens?filter.p.tag=panicum-mombaca"
+            },
+            {
+              "name": "Piatã",
+              "slug": "piata",
+              "url": "/collections/pastagens?filter.p.tag=piata"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Serviços",
+      "slug": "servicos",
+      "url": "/collections/servicos",
+      "children": [
+        {
+          "name": "Animais",
+          "slug": "animais",
+          "url": "/collections/animais",
+          "items": [
+            {
+              "name": "Ferrageamento",
+              "slug": "ferrageamento",
+              "url": "/collections/animais?filter.p.tag=ferrageamento"
+            },
+            {
+              "name": "Inseminação artificial",
+              "slug": "inseminacao-artificial",
+              "url": "/collections/animais?filter.p.tag=inseminacao-artificial"
+            },
+            {
+              "name": "Treinamento/Adestramento",
+              "slug": "treinamento-adestramento",
+              "url": "/collections/animais?filter.p.tag=treinamento-adestramento"
+            },
+            {
+              "name": "Veterinário",
+              "slug": "veterinario",
+              "url": "/collections/animais?filter.p.tag=veterinario"
+            }
+          ]
+        },
+        {
+          "name": "Máquinas",
+          "slug": "maquinas",
+          "url": "/collections/maquinas",
+          "items": [
+            {
+              "name": "Colheita terceirizada",
+              "slug": "colheita-terceirizada",
+              "url": "/collections/maquinas?filter.p.tag=colheita-terceirizada"
+            },
+            {
+              "name": "Pulverização por hora",
+              "slug": "pulverizacao-por-hora",
+              "url": "/collections/maquinas?filter.p.tag=pulverizacao-por-hora"
+            },
+            {
+              "name": "Terraplanagem",
+              "slug": "terraplanagem",
+              "url": "/collections/maquinas?filter.p.tag=terraplanagem"
+            },
+            {
+              "name": "Transporte de máquinas",
+              "slug": "transporte-de-maquinas",
+              "url": "/collections/maquinas?filter.p.tag=transporte-de-maquinas"
+            }
+          ]
+        },
+        {
+          "name": "Transporte",
+          "slug": "transporte",
+          "url": "/collections/transporte",
+          "items": [
+            {
+              "name": "Carga viva",
+              "slug": "carga-viva",
+              "url": "/collections/transporte?filter.p.tag=carga-viva"
+            },
+            {
+              "name": "Grãos",
+              "slug": "graos",
+              "url": "/collections/transporte?filter.p.tag=graos"
+            },
+            {
+              "name": "Rações/insumos",
+              "slug": "racoes-insumos",
+              "url": "/collections/transporte?filter.p.tag=racoes-insumos"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
