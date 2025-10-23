@@ -343,6 +343,75 @@ app.get('/catfinder.json', (req, res) => {
   res.set('Cache-Control', 'no-cache');
   res.json(CATFINDER_DATA);
 });
+// index.js (trecho) — montar catfinder.json a partir de CSV
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import csvParse from 'csv-parse/sync'; // npm i csv-parse
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function buildCatfinderFromCsv(csvPath) {
+  const csv = fs.readFileSync(csvPath, 'utf8');
+  const rows = csvParse.parse(csv, { columns: true, skip_empty_lines: true });
+
+  const byCat = new Map();
+
+  for (const r of rows) {
+    const cName = r.category_name?.trim();
+    const cSlug = r.category_slug?.trim();
+    const cUrl  = r.category_url?.trim();
+
+    if (!cName || !cSlug || !cUrl) continue;
+    if (!byCat.has(cSlug)) {
+      byCat.set(cSlug, { name: cName, slug: cSlug, url: cUrl, children: [] });
+    }
+
+    const sName = r.subcategory_name?.trim();
+    const sSlug = r.subcategory_slug?.trim();
+    const sUrl  = r.subcategory_url?.trim();
+
+    let subRef = null;
+    if (sName && sSlug && sUrl) {
+      const cat = byCat.get(cSlug);
+      subRef = cat.children.find(x => x.slug === sSlug);
+      if (!subRef) {
+        subRef = { name: sName, slug: sSlug, url: sUrl, items: [] };
+        cat.children.push(subRef);
+      }
+    }
+
+    const iName = r.item_name?.trim();
+    const iSlug = r.item_slug?.trim();
+    const iUrl  = r.item_url?.trim();
+
+    if (subRef && iName && iSlug && iUrl) {
+      if (!subRef.items.find(x => x.slug === iSlug)) {
+        subRef.items.push({ name: iName, slug: iSlug, url: iUrl });
+      }
+    }
+  }
+
+  return {
+    rootAll: { slug: "todas-as-categorias", name: "Todas as Categorias", url: "/collections/all" },
+    categories: Array.from(byCat.values())
+  };
+}
+
+// na inicialização:
+const CAT_CSV_PATH = path.join(__dirname, 'data', 'csh_categories.csv');
+let CATFINDER_CACHE = buildCatfinderFromCsv(CAT_CSV_PATH);
+
+// hot-reload simples (opcional): recarrega a cada 60s
+setInterval(() => {
+  try { CATFINDER_CACHE = buildCatfinderFromCsv(CAT_CSV_PATH); } catch {}
+}, 60_000);
+
+// endpoint:
+app.get('/catfinder.json', (req, res) => {
+  res.json(CATFINDER_CACHE);
+});
 
 // ====== START ======
 app.listen(PORT, () => {
