@@ -11,3 +11,29 @@
     { "name": "Serviços Rurais", "slug": "servicos-rurais", "url": "/collections/servicos-rurais" }
   ]
 }
+{
+  "rootAll": { "slug": "todas-as-categorias", "name": "Todas as Categorias", "url": "/collections/all" },
+  "categories": [
+    {
+      "name": "Animais",
+      "slug": "animais",
+      "url": "/collections/animais",
+      "children": [
+        {
+          "name": "Aves",
+          "slug": "aves",
+          "url": "/collections/aves",
+          "items": [
+            { "name": "Galinhas Poedeiras", "slug": "galinhas-poedeiras", "url": "/collections/aves?filter.p.tag=galinhas-poedeiras" }
+          ]
+        },
+        {
+          "name": "Cavalos",
+          "slug": "cavalos",
+          "url": "/collections/cavalos",
+          "items": []
+        }
+      ]
+    }
+  ]
+}
