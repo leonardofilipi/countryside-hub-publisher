@@ -417,3 +417,10 @@ app.get('/catfinder.json', (req, res) => {
 app.listen(PORT, () => {
   console.log(`CSH service running on :${PORT}`);
 });
+// index.js
+import fs from 'fs';
+app.get('/catfinder.json', (req, res) => {
+  const j = fs.readFileSync('./data/catfinder.json', 'utf8');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.send(j);
+});
