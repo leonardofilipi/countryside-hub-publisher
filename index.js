@@ -1,3 +1,4 @@
+// index.js
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -7,6 +8,8 @@ import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 import { randomUUID as uuid } from 'crypto';
 import pkg from 'pg';
+import fs from 'fs';
+
 const { Pool } = pkg;
 
 // ====== ENV ======
@@ -29,6 +32,7 @@ app.use(cors({
   origin: CORS_ORIGIN ? CORS_ORIGIN.split(',').map(s => s.trim()) : true,
   credentials: true
 }));
+app.use(express.urlencoded({ extended: true }));
 
 // ====== DB (Postgres) ======
 const pool = DATABASE_URL
@@ -202,7 +206,6 @@ app.get('/auth/reset', (req, res) => {
   `);
 });
 
-app.use(express.urlencoded({ extended: true }));
 app.post('/auth/reset', async (req, res) => {
   const { token, password } = req.body;
   if (!pool) return res.status(500).send('DB indisponível');
@@ -323,108 +326,18 @@ app.post('/seller/recompute', async (req, res) => {
   }
 });
 
-// ====== CatFinder JSON endpoint ======
-// You can keep this hardcoded data, or later load it from a DB.
-const CATFINDER_DATA = {
-  rootAll: { slug: "todas-as-categorias", name: "Todas as Categorias", url: "/collections/all" },
-  items: [
-    { name: "Animais", slug: "animais", url: "/collections/animais" },
-    { name: "Aves", slug: "aves", url: "/collections/aves", parent: "animais" },
-    { name: "Cavalos", slug: "cavalos", url: "/collections/cavalos", parent: "animais" },
-
-    { name: "Equipamentos", slug: "equipamentos", url: "/collections/equipamentos" },
-    { name: "Tratores", slug: "tratores", url: "/collections/tratores", parent: "equipamentos" },
-
-    { name: "Serviços Rurais", slug: "servicos-rurais", url: "/collections/servicos-rurais" }
-  ]
-};
-
+// ====== CatFinder JSON endpoint (arquivo estático) ======
 app.get('/catfinder.json', (req, res) => {
-  res.set('Cache-Control', 'no-cache');
-  res.json(CATFINDER_DATA);
-});
-// index.js (trecho) — montar catfinder.json a partir de CSV
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import csvParse from 'csv-parse/sync'; // npm i csv-parse
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-function buildCatfinderFromCsv(csvPath) {
-  const csv = fs.readFileSync(csvPath, 'utf8');
-  const rows = csvParse.parse(csv, { columns: true, skip_empty_lines: true });
-
-  const byCat = new Map();
-
-  for (const r of rows) {
-    const cName = r.category_name?.trim();
-    const cSlug = r.category_slug?.trim();
-    const cUrl  = r.category_url?.trim();
-
-    if (!cName || !cSlug || !cUrl) continue;
-    if (!byCat.has(cSlug)) {
-      byCat.set(cSlug, { name: cName, slug: cSlug, url: cUrl, children: [] });
-    }
-
-    const sName = r.subcategory_name?.trim();
-    const sSlug = r.subcategory_slug?.trim();
-    const sUrl  = r.subcategory_url?.trim();
-
-    let subRef = null;
-    if (sName && sSlug && sUrl) {
-      const cat = byCat.get(cSlug);
-      subRef = cat.children.find(x => x.slug === sSlug);
-      if (!subRef) {
-        subRef = { name: sName, slug: sSlug, url: sUrl, items: [] };
-        cat.children.push(subRef);
-      }
-    }
-
-    const iName = r.item_name?.trim();
-    const iSlug = r.item_slug?.trim();
-    const iUrl  = r.item_url?.trim();
-
-    if (subRef && iName && iSlug && iUrl) {
-      if (!subRef.items.find(x => x.slug === iSlug)) {
-        subRef.items.push({ name: iName, slug: iSlug, url: iUrl });
-      }
-    }
+  try {
+    const j = fs.readFileSync('./data/catfinder.json', 'utf8');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(j);
+  } catch (e) {
+    console.error('Erro lendo data/catfinder.json:', e?.message);
+    res.status(500).json({ error: 'catfinder_read_failed' });
   }
-
-  return {
-    rootAll: { slug: "todas-as-categorias", name: "Todas as Categorias", url: "/collections/all" },
-    categories: Array.from(byCat.values())
-  };
-}
-
-// na inicialização:
-const CAT_CSV_PATH = path.join(__dirname, 'data', 'csh_categories.csv');
-let CATFINDER_CACHE = buildCatfinderFromCsv(CAT_CSV_PATH);
-
-// hot-reload simples (opcional): recarrega a cada 60s
-setInterval(() => {
-  try { CATFINDER_CACHE = buildCatfinderFromCsv(CAT_CSV_PATH); } catch {}
-}, 60_000);
-
-// endpoint:
-app.get('/catfinder.json', (req, res) => {
-  res.json(CATFINDER_CACHE);
 });
-import fs from 'fs';
-
-// ... (outros códigos acima)
-
-// === endpoint que entrega o catfinder.json ===
-app.get('/catfinder.json', (req, res) => {
-  const j = fs.readFileSync('./data/catfinder.json', 'utf8');
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.send(j);
-});
-
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
 
 // ====== START ======
 app.listen(PORT, () => {
