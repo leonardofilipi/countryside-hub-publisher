@@ -412,13 +412,19 @@ setInterval(() => {
 app.get('/catfinder.json', (req, res) => {
   res.json(CATFINDER_CACHE);
 });
-// index.js
 import fs from 'fs';
+
+// ... (outros códigos acima)
+
+// === endpoint que entrega o catfinder.json ===
 app.get('/catfinder.json', (req, res) => {
   const j = fs.readFileSync('./data/catfinder.json', 'utf8');
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.send(j);
 });
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 // ====== START ======
 app.listen(PORT, () => {
