@@ -1,4 +1,6 @@
-// index.js
+// index.js  — Countryside Hub (csh-auth)
+// Node 20.x | ESM
+
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -9,14 +11,18 @@ import nodemailer from 'nodemailer';
 import { randomUUID as uuid } from 'crypto';
 import pkg from 'pg';
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const { Pool } = pkg;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ====== ENV ======
 const {
   PORT = 10000,
   JWT_SECRET = 'change-me',
-  CORS_ORIGIN = '',
+  CORS_ORIGIN = '', // "https://countrysidehub.com,https://admin.shopify.com,https://<loja>.myshopify.com"
   PUBLIC_URL = '',
   SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, MAIL_FROM,
   DATABASE_URL,
@@ -27,19 +33,28 @@ const {
 // ====== APP & MIDDLEWARE ======
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// CORS global (API). Aceita lista separada por vírgulas. Para /catfinder.json usamos '*' no próprio handler.
+const corsOrigins = CORS_ORIGIN
+  ? CORS_ORIGIN.split(',').map(s => s.trim()).filter(Boolean)
+  : true;
+
 app.use(cors({
-  origin: CORS_ORIGIN ? CORS_ORIGIN.split(',').map(s => s.trim()) : true,
+  origin: corsOrigins,
   credentials: true
 }));
-app.use(express.urlencoded({ extended: true }));
 
 // ====== DB (Postgres) ======
 const pool = DATABASE_URL
-  ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } })
+  ? new Pool({
+      connectionString: DATABASE_URL,
+      ssl: { rejectUnauthorized: false }
+    })
   : null;
 
-async function ensureSchema(){
+async function ensureSchema () {
   if (!pool) return;
   await pool.query(`
     create extension if not exists pgcrypto;
@@ -70,92 +85,127 @@ async function ensureSchema(){
       id uuid primary key default gen_random_uuid(),
       seller_email text not null,
       reviewer_email text not null,
-      rating int check(rating between 1 and 5) not null,
+      rating int check (rating between 1 and 5) not null,
       title text,
       body text,
-      created_at timestamptz default now(),
-      approved boolean default true
+      approved boolean default true,
+      created_at timestamptz default now()
+    );
+
+    create table if not exists vendor_listings (
+      id uuid primary key default gen_random_uuid(),
+      title text not null,
+      price numeric(12,2),
+      description text,
+      location text,
+      contact_email text,
+      category_slug text,
+      subcategory_slug text,
+      item_slug text,
+      category_url text,
+      subcategory_url text,
+      item_url text,
+      created_at timestamptz default now()
     );
   `);
 }
-ensureSchema().catch(console.error);
+ensureSchema().catch(err => console.error('ensureSchema error:', err));
 
 // ====== Mailer (Zoho) ======
 const transporter = nodemailer.createTransport({
   host: SMTP_HOST,
   port: Number(SMTP_PORT || 465),
-  secure: String(SMTP_SECURE).toLowerCase() === 'true',
+  secure: String(SMTP_SECURE ?? 'true').toLowerCase() === 'true',
   auth: { user: SMTP_USER, pass: SMTP_PASS }
 });
 
 // ====== Helpers ======
-function setSession(res, payload){
+function setSession (res, payload) {
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
-  res.cookie('csh_sid', token, { httpOnly: true, sameSite: 'lax', secure: true, path: '/' });
+  res.cookie('csh_sid', token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: true,
+    path: '/'
+  });
 }
-function clearSession(res){ res.clearCookie('csh_sid', { path: '/' }); }
-function auth(req, res, next){
+function clearSession (res) {
+  res.clearCookie('csh_sid', { path: '/' });
+}
+function auth (req, res, next) {
   const t = req.cookies.csh_sid;
   if (!t) return res.status(401).json({ error: 'not_auth' });
-  try { req.user = jwt.verify(t, JWT_SECRET); next(); }
-  catch { return res.status(401).json({ error: 'bad_token' }); }
+  try {
+    req.user = jwt.verify(t, JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: 'bad_token' });
+  }
 }
 
 // ====== AUTH ROUTES ======
 app.post('/auth/register', async (req, res) => {
-  const { email, password, name, phone } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: 'email_password_required' });
+  try {
+    const { email, password, name, phone } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: 'email_password_required' });
 
-  const hash = await bcrypt.hash(password, 10);
+    const hash = await bcrypt.hash(password, 10);
 
-  if (pool){
-    const q = `
-      insert into users (email, password_hash, name, phone)
-      values ($1,$2,$3,$4)
-      on conflict (email) do update set password_hash = excluded.password_hash
-      returning email, verified, name, phone`;
-    await pool.query(q, [email, hash, name || null, phone || null]);
+    if (pool) {
+      await pool.query(`
+        insert into users (email, password_hash, name, phone)
+        values ($1,$2,$3,$4)
+        on conflict (email) do update set password_hash = excluded.password_hash
+      `, [email, hash, name || null, phone || null]);
+    }
+
+    const token = uuid();
+    if (pool) {
+      await pool.query('insert into verify_tokens(token, user_email) values ($1,$2)', [token, email]);
+    }
+
+    await transporter.sendMail({
+      from: MAIL_FROM,
+      to: email,
+      subject: 'Confirme seu e-mail – Countryside Hub',
+      html: `
+        <p>Olá${name ? ' ' + name.split(' ')[0] : ''}!</p>
+        <p>Confirme seu e-mail clicando no link abaixo:</p>
+        <p><a href="${PUBLIC_URL}/auth/verify?token=${token}">Confirmar e-mail</a></p>
+      `
+    });
+
+    setSession(res, { email });
+    res.json({ ok: true, pendingVerification: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'register_failed' });
   }
-
-  const token = uuid();
-  if (pool){
-    await pool.query('insert into verify_tokens(token, user_email) values($1,$2)', [token, email]);
-  }
-
-  await transporter.sendMail({
-    from: MAIL_FROM,
-    to: email,
-    subject: 'Confirme seu e-mail – Countryside Hub',
-    html: `
-      <p>Olá${name ? ' ' + name.split(' ')[0] : ''}!</p>
-      <p>Confirme seu e-mail clicando no link abaixo:</p>
-      <p><a href="${PUBLIC_URL}/auth/verify?token=${token}">Confirmar e-mail</a></p>
-    `
-  });
-
-  setSession(res, { email });
-  res.json({ ok: true, pendingVerification: true });
 });
 
 app.get('/auth/verify', async (req, res) => {
-  const { token } = req.query;
-  if (!token || !pool) return res.status(400).send('Invalid');
+  try {
+    const { token } = req.query;
+    if (!token || !pool) return res.status(400).send('Invalid');
 
-  const { rows } = await pool.query('select user_email from verify_tokens where token=$1', [token]);
-  if (!rows.length) return res.status(400).send('Token inválido ou expirado');
+    const { rows } = await pool.query('select user_email from verify_tokens where token=$1', [token]);
+    if (!rows.length) return res.status(400).send('Token inválido ou expirado');
 
-  const email = rows[0].user_email;
-  await pool.query('update users set verified=true where email=$1', [email]);
-  await pool.query('delete from verify_tokens where token=$1', [token]);
+    const email = rows[0].user_email;
+    await pool.query('update users set verified=true where email=$1', [email]);
+    await pool.query('delete from verify_tokens where token=$1', [token]);
 
-  res.send('E-mail verificado com sucesso. Você já pode fechar esta aba.');
+    res.send('E-mail verificado com sucesso. Você já pode fechar esta aba.');
+  } catch {
+    res.status(500).send('Erro ao verificar e-mail.');
+  }
 });
 
 app.post('/auth/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'email_password_required' });
-
   if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+
   const { rows } = await pool.query('select email, password_hash, verified, name from users where email=$1', [email]);
   if (!rows.length) return res.status(401).json({ error: 'invalid_credentials' });
 
@@ -179,9 +229,7 @@ app.post('/auth/request-reset', async (req, res) => {
   if (!email) return res.status(400).json({ error: 'email_required' });
 
   const token = uuid();
-  if (pool){
-    await pool.query('insert into reset_tokens(token, user_email) values($1,$2)', [token, email]);
-  }
+  if (pool) await pool.query('insert into reset_tokens(token, user_email) values ($1,$2)', [token, email]);
 
   await transporter.sendMail({
     from: MAIL_FROM,
@@ -207,7 +255,7 @@ app.get('/auth/reset', (req, res) => {
 });
 
 app.post('/auth/reset', async (req, res) => {
-  const { token, password } = req.body;
+  const { token, password } = req.body || {};
   if (!pool) return res.status(500).send('DB indisponível');
 
   const { rows } = await pool.query('select user_email from reset_tokens where token=$1', [token]);
@@ -226,34 +274,39 @@ app.post('/reviews', auth, async (req, res) => {
   if (!sellerEmail || !rating) return res.status(400).json({ error: 'missing_fields' });
   if (!pool) return res.status(500).json({ error: 'db_unavailable' });
 
-  await pool.query(
-    'insert into reviews (seller_email, reviewer_email, rating, title, body) values ($1,$2,$3,$4,$5)',
-    [sellerEmail, req.user.email, Number(rating), title || null, body || null]
-  );
+  await pool.query(`
+    insert into reviews (seller_email, reviewer_email, rating, title, body)
+    values ($1,$2,$3,$4,$5)
+  `, [sellerEmail, req.user.email, Number(rating), title || null, body || null]);
 
   res.json({ ok: true });
 
-  // trigger recompute (non-blocking)
+  // dispara recompute (assíncrono, silencioso)
   try {
     await fetch(`${PUBLIC_URL}/seller/recompute`, {
       method: 'POST',
-      headers: { 'Content-Type':'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sellerEmail })
     });
-  } catch(e) { console.warn('recompute failed (silent):', e?.message); }
+  } catch (e) {
+    console.warn('recompute failed:', e?.message);
+  }
 });
 
 app.get('/reviews/:sellerEmail', async (req, res) => {
   if (!pool) return res.json([]);
-  const { rows } = await pool.query(
-    'select rating, title, body, reviewer_email, created_at from reviews where seller_email=$1 and approved=true order by created_at desc limit 50',
-    [req.params.sellerEmail]
-  );
+  const { rows } = await pool.query(`
+    select rating, title, body, reviewer_email, created_at
+    from reviews
+    where seller_email=$1 and approved=true
+    order by created_at desc
+    limit 50
+  `, [req.params.sellerEmail]);
   res.json(rows);
 });
 
 // ====== SELLER AGGREGATION + SHOPIFY METAOBJECT UPDATE ======
-async function shopifyGraphQL(query, variables = {}){
+async function shopifyGraphQL (query, variables = {}) {
   if (!SHOPIFY_STORE || !SHOPIFY_ADMIN_TOKEN) {
     throw new Error('Shopify Admin API não configurada');
   }
@@ -275,10 +328,11 @@ async function shopifyGraphQL(query, variables = {}){
 
 app.get('/seller/aggregate/:email', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'db_unavailable' });
-  const { rows } = await pool.query(
-    'select coalesce(avg(rating),0)::float as avg, count(*)::int as cnt from reviews where seller_email=$1 and approved=true',
-    [req.params.email]
-  );
+  const { rows } = await pool.query(`
+    select coalesce(avg(rating),0)::float as avg, count(*)::int as cnt
+    from reviews
+    where seller_email=$1 and approved=true
+  `, [req.params.email]);
   res.json(rows[0]);
 });
 
@@ -288,10 +342,12 @@ app.post('/seller/recompute', async (req, res) => {
     if (!sellerEmail) return res.status(400).json({ error: 'sellerEmail_required' });
     if (!pool) return res.status(500).json({ error: 'db_unavailable' });
 
-    const { rows } = await pool.query(
-      'select coalesce(avg(rating),0)::float as avg, count(*)::int as cnt from reviews where seller_email=$1 and approved=true',
-      [sellerEmail]
-    );
+    const { rows } = await pool.query(`
+      select coalesce(avg(rating),0)::float as avg, count(*)::int as cnt
+      from reviews
+      where seller_email=$1 and approved=true
+    `, [sellerEmail]);
+
     const avg = Number(rows[0].avg || 0);
     const cnt = Number(rows[0].cnt || 0);
 
@@ -301,7 +357,7 @@ app.post('/seller/recompute', async (req, res) => {
           nodes { id handle }
         }
       }`;
-    const findQ = `contact_email_e_mail_de_contato:"${sellerEmail.replace(/"/g,'\\"')}"`;
+    const findQ = `contact_email_e_mail_de_contato:"${sellerEmail.replace(/"/g, '\\"')}"`;
     const found = await shopifyGraphQL(Q_FIND, { q: findQ });
     const node = found.metaobjects.nodes[0];
     if (!node) return res.status(404).json({ error: 'metaobject_not_found' });
@@ -314,8 +370,8 @@ app.post('/seller/recompute', async (req, res) => {
         }
       }`;
     const fields = [
-      { key: "rating_nota_media", value: avg.toFixed(2) },
-      { key: "numero_de_avaliacoes", value: String(cnt) }
+      { key: 'rating_nota_media', value: avg.toFixed(2) },
+      { key: 'numero_de_avaliacoes', value: String(cnt) }
     ];
     await shopifyGraphQL(M_UPDATE, { id: node.id, fields });
 
@@ -326,27 +382,57 @@ app.post('/seller/recompute', async (req, res) => {
   }
 });
 
-import fs from 'fs';
-import express from 'express';
-const app = express();
+// ====== VENDOR LISTING (formulário do vendedor) ======
+app.post('/vendor/listing', async (req, res) => {
+  try {
+    const {
+      title, price, description, location, contactEmail,
+      category, subcategory, item,
+      category_url, subcategory_url, item_url
+    } = req.body || {};
 
-// ====== CatFinder JSON endpoint (público) ======
+    if (!title || !contactEmail || !category) {
+      return res.status(400).json({ error: 'missing_required_fields' });
+    }
+
+    if (pool) {
+      await pool.query(`
+        insert into vendor_listings
+         (title, price, description, location, contact_email,
+          category_slug, subcategory_slug, item_slug,
+          category_url, subcategory_url, item_url)
+        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      `, [
+        title, price || null, description || null, location || null, contactEmail,
+        category || null, subcategory || null, item || null,
+        category_url || null, subcategory_url || null, item_url || null
+      ]);
+    }
+
+    // (opcional) notificar por e-mail
+    // await transporter.sendMail({ from: MAIL_FROM, to: MAIL_FROM, subject: 'Novo anúncio', text: JSON.stringify(req.body, null, 2) });
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'listing_failed' });
+  }
+});
+
+// ====== CatFinder JSON endpoint (público, com CORS *) ======
 app.get('/catfinder.json', (req, res) => {
   try {
-    // Libera acesso CORS para QUALQUER origem (Shopify, localhost, etc.)
+    // CORS liberado explicitamente só aqui (GET público, sem cookies)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Vary', 'Origin');
 
-    // Lê o arquivo JSON de categorias
-    const j = fs.readFileSync('./data/catfinder.json', 'utf8');
+    const filePath = path.join(__dirname, 'data', 'catfinder.json');
+    const j = fs.readFileSync(filePath, 'utf8');
 
-    // Define tipo e evita cache
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache');
-
-    // Envia o JSON puro
     res.status(200).send(j);
   } catch (e) {
     console.error('Erro lendo data/catfinder.json:', e.message);
@@ -354,19 +440,8 @@ app.get('/catfinder.json', (req, res) => {
   }
 });
 
-// ====== (final do arquivo) ======
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`✅ CSH service running on port ${PORT}`);
-});
-
-
-// ====== (mantenha apenas um listen no fim) ======
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`CSH service running on :${PORT}`);
-});
-
+// ====== Health ======
+app.get('/', (req, res) => res.json({ ok: true, name: 'csh-auth', ts: new Date().toISOString() }));
 
 // ====== START ======
 app.listen(PORT, () => {
