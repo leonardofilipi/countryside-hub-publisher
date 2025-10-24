@@ -1,0 +1,148 @@
+Categoria,Subcategoria,Item
+Animais,Cavalos,Quarto de Milha
+Animais,Cavalos,Mangalarga Marchador
+Animais,Cavalos,Crioulo
+Animais,Cavalos,Puro Sangue Inglês
+Animais,Cavalos,Appaloosa
+Animais,Bovinos,Nelore
+Animais,Bovinos,Angus
+Animais,Bovinos,Girolando
+Animais,Bovinos,Holandês
+Animais,Bovinos,Brahman
+Animais,Ovinos,Dorper
+Animais,Ovinos,Santa Inês
+Animais,Ovinos,Suffolk
+Animais,Ovinos,Merino
+Animais,Caprinos,Boer
+Animais,Caprinos,Saanen
+Animais,Caprinos,Anglo-Nubiano
+Animais,Caprinos,Mestiços
+Animais,Suínos,Duroc
+Animais,Suínos,Landrace
+Animais,Suínos,Large White
+Animais,Suínos,Pietrain
+Animais,Aves,Frango de corte
+Animais,Aves,Poedeiras
+Animais,Aves,Caipiras
+Animais,Aves,Perus
+Animais,Aves,Patos
+Animais,Aves,Gansos
+Animais,Cães de trabalho,Border Collie
+Animais,Cães de trabalho,Australian Cattle Dog
+Animais,Cães de trabalho,Kangal
+Animais,Cães de trabalho,Outros cães de pastoreio
+Rações e Forragens,Ração,Bovinos de corte
+Rações e Forragens,Ração,Bovinos de leite
+Rações e Forragens,Ração,Equinos
+Rações e Forragens,Ração,Aves
+Rações e Forragens,Ração,Suínos
+Rações e Forragens,Volumosos,Feno Tifton
+Rações e Forragens,Volumosos,Feno Coast Cross
+Rações e Forragens,Volumosos,Silagem de milho
+Rações e Forragens,Volumosos,Silagem de sorgo
+Rações e Forragens,Suplementos,Sal mineral
+Rações e Forragens,Suplementos,Proteinados
+Rações e Forragens,Suplementos,Núcleos vitamínicos
+Rações e Forragens,Aditivos,Leveduras
+Rações e Forragens,Aditivos,Ionóforos
+Rações e Forragens,Aditivos,Probióticos
+Máquinas,Tratores,55–75 cv
+Máquinas,Tratores,75–100 cv
+Máquinas,Tratores,100–150 cv
+Máquinas,Tratores,150+ cv
+Máquinas,Colheitadeiras,Pequeno porte
+Máquinas,Colheitadeiras,Médio porte
+Máquinas,Colheitadeiras,Grande porte
+Máquinas,Plantadeiras,2–4 linhas
+Máquinas,Plantadeiras,5–9 linhas
+Máquinas,Plantadeiras,10+ linhas
+Máquinas,Pulverizadores,Costal
+Máquinas,Pulverizadores,Barra tratorizada
+Máquinas,Pulverizadores,Autopropelido
+Máquinas,Carregadeiras e Retroescavadeiras,Mini
+Máquinas,Carregadeiras e Retroescavadeiras,Padrão
+Máquinas,Carregadeiras e Retroescavadeiras,Articulada
+Implementos,Preparo de solo,Arado
+Implementos,Preparo de solo,Grade aradora
+Implementos,Preparo de solo,Grade niveladora
+Implementos,Preparo de solo,Subsolador
+Implementos,Forrageiros,Ensiladeira
+Implementos,Forrageiros,Enfardadeira
+Implementos,Forrageiros,Enleirador
+Implementos,Forrageiros,Segadora
+Implementos,Transporte,Carreta agrícola
+Implementos,Transporte,Graneleira
+Implementos,Transporte,Plataforma
+Implementos,Pecuária,Cochos
+Implementos,Pecuária,Bebedouros
+Implementos,Pecuária,Balança bovina
+Implementos,Pecuária,Bretes e troncos
+Irrigação,Sistemas,Gotejamento
+Irrigação,Sistemas,Aspersão
+Irrigação,Sistemas,Pivô fixo/central
+Irrigação,Sistemas,Microaspersão
+Irrigação,Componentes,Bombas
+Irrigação,Componentes,Filtros
+Irrigação,Componentes,Mangueiras e tubos
+Irrigação,Componentes,Conexões
+Irrigação,Automação,Controladores
+Irrigação,Automação,Válvulas elétricas
+Irrigação,Automação,Sensores de umidade
+Sementes,Grãos,Milho
+Sementes,Grãos,Soja
+Sementes,Grãos,Sorgo
+Sementes,Grãos,Feijão
+Sementes,Grãos,Trigo
+Sementes,Pastagens,Brachiaria brizantha
+Sementes,Pastagens,Brachiaria ruziziensis
+Sementes,Pastagens,Panicum (Mombaça)
+Sementes,Pastagens,Piatã
+Sementes,Forrageiras de inverno,Azevém
+Sementes,Forrageiras de inverno,Aveia preta
+Sementes,Forrageiras de inverno,Trevo
+Equipamentos,Ordenha e Leite,Ordenhadeiras
+Equipamentos,Ordenha e Leite,Resfriadores de leite
+Equipamentos,Ordenha e Leite,Lactômetros
+Equipamentos,Cercas e Manejo,Cercas elétricas
+Equipamentos,Cercas e Manejo,Arame e mourões
+Equipamentos,Cercas e Manejo,Portas e cancelas
+Equipamentos,Armazenagem,Silos
+Equipamentos,Armazenagem,Moegas
+Equipamentos,Armazenagem,Tulhas
+Equipamentos,Ambiência,Ventiladores
+Equipamentos,Ambiência,Nebulizadores
+Equipamentos,Ambiência,Sombrite e lonas
+Apicultura,Colmeias e Núcleos,Langstroth
+Apicultura,Colmeias e Núcleos,Núcleo Isca
+Apicultura,Colmeias e Núcleos,Caixas racionais
+Apicultura,Acessórios,Fumigador
+Apicultura,Acessórios,Macacão
+Apicultura,Acessórios,Luvas
+Apicultura,Acessórios,Pás e carretilhas
+Apicultura,Produtos,Mel
+Apicultura,Produtos,Pólen
+Apicultura,Produtos,Própolis
+Apicultura,Produtos,Cera
+Serviços,Animais,Inseminação artificial
+Serviços,Animais,Ferrageamento
+Serviços,Animais,Veterinário
+Serviços,Animais,Treinamento/Adestramento
+Serviços,Máquinas,Transporte de máquinas
+Serviços,Máquinas,Colheita terceirizada
+Serviços,Máquinas,Terraplanagem
+Serviços,Máquinas,Pulverização por hora
+Serviços,Transporte,Carga viva
+Serviços,Transporte,Rações/insumos
+Serviços,Transporte,Grãos
+Imóveis Rurais,Propriedades,Fazendas
+Imóveis Rurais,Propriedades,Sítios/Chácaras
+Imóveis Rurais,Propriedades,Arrendamentos
+Imóveis Rurais,Estruturas,Galpões
+Imóveis Rurais,Estruturas,Currais
+Imóveis Rurais,Estruturas,Lotes com água/energia
+Pets & Companhia Rural,Cães,Cães de guarda
+Pets & Companhia Rural,Cães,Cães de companhia
+Pets & Companhia Rural,Cães,Acessórios
+Pets & Companhia Rural,Gatos,Filhotes
+Pets & Companhia Rural,Gatos,Adultos
+Pets & Companhia Rural,Gatos,Acessórios
