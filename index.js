@@ -471,6 +471,45 @@ app.get('/vendor/categories.json', (req, res) => {
     res.status(500).json({ error: 'vendor_categories_failed' });
   }
 });
+// --- sanity checks/health
+app.get('/health', (req,res) => res.json({ ok:true, ts: Date.now() }));
+
+// --- rota pública para receber o anúncio do formulário
+app.post('/vendor/listing', async (req, res) => {
+  try {
+    // o formulário envia via fetch(JSON) no seu JS,
+    // ou via <form> + JS que monta um body. Pegamos ambos:
+    const payload = req.body || {};
+    const {
+      category,
+      subcategory,
+      item,         // opcional
+      title,
+      price,
+      city,
+      email,        // contato
+      description
+    } = payload;
+
+    // validações simples
+    if (!category || !subcategory || !title || !price || !email) {
+      return res.status(400).json({ ok:false, error: 'missing_fields' });
+    }
+
+    // TODO: salve em banco, crie ticket, envie e-mail, etc. (opcional)
+    // Exemplo: logar rapidamente:
+    console.log('NEW LISTING', { category, subcategory, item, title, price, city, email });
+
+    // resposta OK
+    return res.json({ ok:true, message:'listing_received' });
+  } catch (e) {
+    console.error('vendor/listing error:', e);
+    return res.status(500).json({ ok:false, error:'server_error' });
+  }
+});
+
+// (opcional) aceitar preflight CORS explícito na mesma rota
+app.options('/vendor/listing', (req,res) => res.sendStatus(204));
 
 // ====== START ======
 app.listen(PORT, () => {
