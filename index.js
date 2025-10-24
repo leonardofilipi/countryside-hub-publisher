@@ -329,7 +329,6 @@ app.post('/seller/recompute', async (req, res) => {
 // ====== CatFinder JSON endpoint (público) ======
 app.get('/catfinder.json', (req, res) => {
   try {
-    // CORS SOLTO SÓ PARA ESTE RECURSO (GET público)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -337,25 +336,20 @@ app.get('/catfinder.json', (req, res) => {
 
     const j = fs.readFileSync('./data/catfinder.json', 'utf8');
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    // evita cache no editor/loja
     res.setHeader('Cache-Control', 'no-cache');
     res.status(200).send(j);
   } catch (e) {
-    console.error('Erro lendo data/catfinder.json:', e?.message);
+    console.error('Erro lendo data/catfinder.json:', e.message);
     res.status(500).json({ error: 'catfinder_read_failed' });
   }
 });
 
-
-    // (opcional) enviar e-mail de notificação
-    // await transporter.sendMail({ from: MAIL_FROM, to: MAIL_FROM, subject: 'Novo anúncio', text: JSON.stringify(req.body, null, 2) });
-
-    res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'listing_failed' });
-  }
+// ====== (mantenha apenas um listen no fim) ======
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+  console.log(`CSH service running on :${PORT}`);
 });
+
 
 // ====== START ======
 app.listen(PORT, () => {
