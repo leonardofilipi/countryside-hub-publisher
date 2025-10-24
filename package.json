@@ -18,3 +18,9 @@
     "pg": "^8.11.5"
   }
 }
+"dependencies": {
+  "csv-parse": "^5.5.0"
+}
+"scripts": {
+  "build:categories": "node scripts/build-catfinder-and-vendor-json.mjs"
+}
