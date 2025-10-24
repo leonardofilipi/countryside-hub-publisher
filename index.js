@@ -508,16 +508,39 @@ app.post('/vendor/listing', async (req, res) => {
   }
 });
 
-// (opcional) aceitar preflight CORS explícito na mesma rota
-app.options('/vendor/listing', (req,res) => res.sendStatus(204));
-// precisa EXISTIR no index.js do Render
+// --- preflight CORS explícito
+app.options('/vendor/listing', (req, res) => res.sendStatus(204));
+
+// --- recepção do anúncio (única rota)
 app.post('/vendor/listing', async (req, res) => {
   try {
-    // (por enquanto, só ecoa pra testar)
-    return res.json({ ok: true, received: req.body || null });
+    const payload = req.body || {};
+    const {
+      category,
+      subcategory,
+      item,          // opcional
+      title,
+      price,
+      city,
+      email,
+      description
+    } = payload;
+
+    // validação mínima
+    if (!category || !subcategory || !title || !price || !email) {
+      return res.status(400).json({ ok: false, error: 'missing_fields' });
+    }
+
+    // TODO: persistir em DB / enviar e-mail / criar ticket
+    console.log('NEW LISTING', { category, subcategory, item, title, price, city, email });
+
+    return res.json({ ok: true, message: 'listing_received' });
   } catch (e) {
-    console.error(e);
-    return res.status(500).json({ error: 'failed' });
+    console.error('vendor/listing error:', e);
+    return res.status(500).json({ ok: false, error: 'server_error' });
+  }
+});
+
   }
 });
 
