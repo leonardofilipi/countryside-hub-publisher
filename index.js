@@ -326,23 +326,40 @@ app.post('/seller/recompute', async (req, res) => {
   }
 });
 
+import fs from 'fs';
+import express from 'express';
+const app = express();
+
 // ====== CatFinder JSON endpoint (público) ======
 app.get('/catfinder.json', (req, res) => {
   try {
+    // Libera acesso CORS para QUALQUER origem (Shopify, localhost, etc.)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Vary', 'Origin');
 
+    // Lê o arquivo JSON de categorias
     const j = fs.readFileSync('./data/catfinder.json', 'utf8');
+
+    // Define tipo e evita cache
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache');
+
+    // Envia o JSON puro
     res.status(200).send(j);
   } catch (e) {
     console.error('Erro lendo data/catfinder.json:', e.message);
     res.status(500).json({ error: 'catfinder_read_failed' });
   }
 });
+
+// ====== (final do arquivo) ======
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+  console.log(`✅ CSH service running on port ${PORT}`);
+});
+
 
 // ====== (mantenha apenas um listen no fim) ======
 const PORT = process.env.PORT || 10000;
