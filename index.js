@@ -510,6 +510,16 @@ app.post('/vendor/listing', async (req, res) => {
 
 // (opcional) aceitar preflight CORS explícito na mesma rota
 app.options('/vendor/listing', (req,res) => res.sendStatus(204));
+// precisa EXISTIR no index.js do Render
+app.post('/vendor/listing', async (req, res) => {
+  try {
+    // (por enquanto, só ecoa pra testar)
+    return res.json({ ok: true, received: req.body || null });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'failed' });
+  }
+});
 
 // ====== START ======
 app.listen(PORT, () => {
