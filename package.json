@@ -5,7 +5,8 @@
   "type": "module",
   "engines": { "node": "20.x" },
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "build:categories": "node scripts/build-catfinder-and-vendor-json.mjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -15,12 +16,7 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^6.9.14",
-    "pg": "^8.11.5"
+    "pg": "^8.11.5",
+    "csv-parse": "^5.5.0"
   }
-}
-"dependencies": {
-  "csv-parse": "^5.5.0"
-}
-"scripts": {
-  "build:categories": "node scripts/build-catfinder-and-vendor-json.mjs"
 }
