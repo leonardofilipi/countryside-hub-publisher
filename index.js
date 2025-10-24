@@ -1,3 +1,4 @@
+// index.js
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -11,37 +12,39 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+// ========== Setup de caminho ==========
 const { Pool } = pkg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ====== ENV ======
+// ========== ENV ==========
 const {
   PORT = 10000,
   JWT_SECRET = 'change-me',
-  CORS_ORIGIN = '',
-  PUBLIC_URL = '',
+  CORS_ORIGIN = '',        // ex: "https://country…com,https://admin.shopify.com"
+  PUBLIC_URL = '',         // ex: "https://csh-auth-2.onrender.com"
   SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, MAIL_FROM,
   DATABASE_URL,
-  SHOPIFY_STORE,
+  SHOPIFY_STORE,           // ex: "your-store.myshopify.com"
   SHOPIFY_ADMIN_TOKEN
 } = process.env;
 
-// ====== APP & MIDDLEWARE ======
+// ========== App & Middlewares ==========
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(cors({
   origin: CORS_ORIGIN ? CORS_ORIGIN.split(',').map(s => s.trim()) : true,
-  credentials: true
+  credentials: true,
 }));
 
-// ====== DB (Postgres) ======
+// ========== DB (Postgres opcional) ==========
 const pool = DATABASE_URL
   ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } })
   : null;
 
-async function ensureSchema(){
+async function ensureSchema() {
   if (!pool) return;
   await pool.query(`
     create extension if not exists pgcrypto;
@@ -72,56 +75,62 @@ async function ensureSchema(){
       id uuid primary key default gen_random_uuid(),
       seller_email text not null,
       reviewer_email text not null,
-      rating int check(rating between 1 and 5) not null,
+      rating int check (rating between 1 and 5) not null,
       title text,
       body text,
-      created_at timestamptz default now(),
-      approved boolean default true
+      approved boolean default true,
+      created_at timestamptz default now()
     );
   `);
 }
 ensureSchema().catch(console.error);
 
-// ====== Mailer (Zoho) ======
+// ========== Mailer ==========
 const transporter = nodemailer.createTransport({
   host: SMTP_HOST,
   port: Number(SMTP_PORT || 465),
   secure: String(SMTP_SECURE).toLowerCase() === 'true',
-  auth: { user: SMTP_USER, pass: SMTP_PASS }
+  auth: { user: SMTP_USER, pass: SMTP_PASS },
 });
 
-// ====== Helpers Auth ======
-function setSession(res, payload){
+// ========== Helpers de sessão ==========
+function setSession(res, payload) {
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
   res.cookie('csh_sid', token, { httpOnly: true, sameSite: 'lax', secure: true, path: '/' });
 }
-function clearSession(res){ res.clearCookie('csh_sid', { path: '/' }); }
-function auth(req, res, next){
+function clearSession(res) {
+  res.clearCookie('csh_sid', { path: '/' });
+}
+function auth(req, res, next) {
   const t = req.cookies.csh_sid;
   if (!t) return res.status(401).json({ error: 'not_auth' });
-  try { req.user = jwt.verify(t, JWT_SECRET); next(); }
-  catch { return res.status(401).json({ error: 'bad_token' }); }
+  try {
+    req.user = jwt.verify(t, JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: 'bad_token' });
+  }
 }
 
-// ====== AUTH ROUTES ======
+// ========== AUTH ==========
 app.post('/auth/register', async (req, res) => {
   const { email, password, name, phone } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'email_password_required' });
 
   const hash = await bcrypt.hash(password, 10);
 
-  if (pool){
-    const q = `
-      insert into users (email, password_hash, name, phone)
-      values ($1,$2,$3,$4)
-      on conflict (email) do update set password_hash = excluded.password_hash
-      returning email, verified, name, phone`;
-    await pool.query(q, [email, hash, name || null, phone || null]);
+  if (pool) {
+    await pool.query(
+      `insert into users (email, password_hash, name, phone)
+       values ($1,$2,$3,$4)
+       on conflict (email) do update set password_hash = excluded.password_hash`,
+      [email, hash, name || null, phone || null]
+    );
   }
 
   const token = uuid();
-  if (pool){
-    await pool.query('insert into verify_tokens(token, user_email) values($1,$2)', [token, email]);
+  if (pool) {
+    await pool.query('insert into verify_tokens (token, user_email) values ($1,$2)', [token, email]);
   }
 
   await transporter.sendMail({
@@ -132,7 +141,7 @@ app.post('/auth/register', async (req, res) => {
       <p>Olá${name ? ' ' + name.split(' ')[0] : ''}!</p>
       <p>Confirme seu e-mail clicando no link abaixo:</p>
       <p><a href="${PUBLIC_URL}/auth/verify?token=${token}">Confirmar e-mail</a></p>
-    `
+    `,
   });
 
   setSession(res, { email });
@@ -156,8 +165,8 @@ app.get('/auth/verify', async (req, res) => {
 app.post('/auth/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'email_password_required' });
-
   if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+
   const { rows } = await pool.query('select email, password_hash, verified, name from users where email=$1', [email]);
   if (!rows.length) return res.status(401).json({ error: 'invalid_credentials' });
 
@@ -181,15 +190,15 @@ app.post('/auth/request-reset', async (req, res) => {
   if (!email) return res.status(400).json({ error: 'email_required' });
 
   const token = uuid();
-  if (pool){
-    await pool.query('insert into reset_tokens(token, user_email) values($1,$2)', [token, email]);
+  if (pool) {
+    await pool.query('insert into reset_tokens(token, user_email) values ($1,$2)', [token, email]);
   }
 
   await transporter.sendMail({
     from: MAIL_FROM,
     to: email,
     subject: 'Redefinição de senha – Countryside Hub',
-    html: `<p><a href="${PUBLIC_URL}/auth/reset?token=${token}">Redefinir senha</a></p>`
+    html: `<p><a href="${PUBLIC_URL}/auth/reset?token=${token}">Redefinir senha</a></p>`,
   });
 
   res.json({ ok: true });
@@ -208,7 +217,6 @@ app.get('/auth/reset', (req, res) => {
   `);
 });
 
-app.use(express.urlencoded({ extended: true }));
 app.post('/auth/reset', async (req, res) => {
   const { token, password } = req.body;
   if (!pool) return res.status(500).send('DB indisponível');
@@ -223,7 +231,7 @@ app.post('/auth/reset', async (req, res) => {
   res.send('Senha alterada. Você já pode fechar esta aba e entrar novamente.');
 });
 
-// ====== REVIEWS ======
+// ========== Reviews ==========
 app.post('/reviews', auth, async (req, res) => {
   const { sellerEmail, rating, title, body } = req.body || {};
   if (!sellerEmail || !rating) return res.status(400).json({ error: 'missing_fields' });
@@ -235,14 +243,13 @@ app.post('/reviews', auth, async (req, res) => {
   );
 
   res.json({ ok: true });
-
   try {
     await fetch(`${PUBLIC_URL}/seller/recompute`, {
       method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ sellerEmail })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sellerEmail }),
     });
-  } catch(e) { console.warn('recompute failed (silent):', e?.message); }
+  } catch (e) { console.warn('recompute failed (silent):', e?.message); }
 });
 
 app.get('/reviews/:sellerEmail', async (req, res) => {
@@ -254,8 +261,8 @@ app.get('/reviews/:sellerEmail', async (req, res) => {
   res.json(rows);
 });
 
-// ====== SELLER AGGREGATION + SHOPIFY METAOBJECT UPDATE ======
-async function shopifyGraphQL(query, variables = {}){
+// ========== Shopify helper (opcional) ==========
+async function shopifyGraphQL(query, variables = {}) {
   if (!SHOPIFY_STORE || !SHOPIFY_ADMIN_TOKEN) {
     throw new Error('Shopify Admin API não configurada');
   }
@@ -263,9 +270,9 @@ async function shopifyGraphQL(query, variables = {}){
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Shopify-Access-Token': SHOPIFY_ADMIN_TOKEN
+      'X-Shopify-Access-Token': SHOPIFY_ADMIN_TOKEN,
     },
-    body: JSON.stringify({ query, variables })
+    body: JSON.stringify({ query, variables }),
   });
   const j = await r.json();
   if (j.errors || j.data?.metaobjectUpdate?.userErrors?.length) {
@@ -303,7 +310,7 @@ app.post('/seller/recompute', async (req, res) => {
           nodes { id handle }
         }
       }`;
-    const findQ = `contact_email_e_mail_de_contato:"${sellerEmail.replace(/"/g,'\\"')}"`;
+    const findQ = `contact_email_e_mail_de_contato:"${sellerEmail.replace(/"/g, '\\"')}"`;
     const found = await shopifyGraphQL(Q_FIND, { q: findQ });
     const node = found.metaobjects.nodes[0];
     if (!node) return res.status(404).json({ error: 'metaobject_not_found' });
@@ -316,8 +323,8 @@ app.post('/seller/recompute', async (req, res) => {
         }
       }`;
     const fields = [
-      { key: "rating_nota_media", value: avg.toFixed(2) },
-      { key: "numero_de_avaliacoes", value: String(cnt) }
+      { key: 'rating_nota_media', value: avg.toFixed(2) },
+      { key: 'numero_de_avaliacoes', value: String(cnt) },
     ];
     await shopifyGraphQL(M_UPDATE, { id: node.id, fields });
 
@@ -329,12 +336,11 @@ app.post('/seller/recompute', async (req, res) => {
 });
 
 // ============================================================
-// ========== CATEGORIES served from CSV (no shell) ===========
+// ========== Categorias a partir do CSV (sem shell) ==========
 // ============================================================
-
 const CSV_PATH = path.join(__dirname, 'data', 'csh_categories.csv');
 
-function slugify(txt){
+function slugify(txt) {
   return String(txt || '')
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -344,49 +350,45 @@ function slugify(txt){
     .replace(/^-|-$/g, '');
 }
 
-function loadCSVRows(){
+function loadCSVRows() {
   const raw = fs.readFileSync(CSV_PATH, 'utf8');
   const lines = raw.split(/\r?\n/).filter(Boolean);
-  // Espera cabeçalhos: Categoria,Subcategoria,Item (case-insensitive)
   const header = lines.shift().split(',').map(h => h.trim().toLowerCase());
   const idxCat = header.findIndex(h => h === 'categoria');
   const idxSub = header.findIndex(h => h === 'subcategoria');
   const idxItem = header.findIndex(h => h === 'item');
 
   const rows = [];
-  for (const line of lines){
+  for (const line of lines) {
     const cols = line.split(',').map(c => c.trim());
     rows.push({
       categoria: idxCat >= 0 ? cols[idxCat] : '',
       subcategoria: idxSub >= 0 ? cols[idxSub] : '',
-      item: idxItem >= 0 ? cols[idxItem] : ''
+      item: idxItem >= 0 ? cols[idxItem] : '',
     });
   }
   return rows;
 }
 
-function buildCatfinderAndVendor(){
+function buildCatfinderAndVendor() {
   const rows = loadCSVRows();
 
-  // catfinder (flat + parent)
   const cfItems = [];
   const seen = new Set();
-
-  // vendor (nested)
   const byCat = new Map();
 
-  for (const r of rows){
+  for (const r of rows) {
     if (!r.categoria) continue;
 
     const cName = r.categoria;
     const cSlug = slugify(cName);
     const cUrl = `/collections/${cSlug}`;
 
-    if (!seen.has(`cat:${cSlug}`)){
+    if (!seen.has(`cat:${cSlug}`)) {
       cfItems.push({ name: cName, slug: cSlug, url: cUrl });
       seen.add(`cat:${cSlug}`);
     }
-    if (!byCat.has(cSlug)){
+    if (!byCat.has(cSlug)) {
       byCat.set(cSlug, { name: cName, slug: cSlug, url: cUrl, children: [] });
     }
 
@@ -396,14 +398,14 @@ function buildCatfinderAndVendor(){
     const sSlug = slugify(sName);
     const sUrl = `/collections/${sSlug}`;
 
-    if (!seen.has(`sub:${sSlug}`)){
+    if (!seen.has(`sub:${sSlug}`)) {
       cfItems.push({ name: sName, slug: sSlug, url: sUrl, parent: cSlug });
       seen.add(`sub:${sSlug}`);
     }
 
     const catEntry = byCat.get(cSlug);
     let subRef = catEntry.children.find(x => x.slug === sSlug);
-    if (!subRef){
+    if (!subRef) {
       subRef = { name: sName, slug: sSlug, url: sUrl, items: [] };
       catEntry.children.push(subRef);
     }
@@ -414,19 +416,19 @@ function buildCatfinderAndVendor(){
     const iSlug = slugify(iName);
     const iUrl = `/collections/${sSlug}?filter.p.tag=${iSlug}`;
 
-    if (!seen.has(`item:${sSlug}:${iSlug}`)){
+    if (!seen.has(`item:${sSlug}:${iSlug}`)) {
       cfItems.push({ name: iName, slug: iSlug, url: iUrl, parent: sSlug });
       seen.add(`item:${sSlug}:${iSlug}`);
     }
 
-    if (!subRef.items.find(it => it.slug === iSlug)){
+    if (!subRef.items.find(it => it.slug === iSlug)) {
       subRef.items.push({ name: iName, slug: iSlug, url: iUrl });
     }
   }
 
   const catfinder = {
     rootAll: { slug: 'todas-as-categorias', name: 'Todas as Categorias', url: '/collections/all' },
-    items: cfItems
+    items: cfItems,
   };
 
   const vendor = { categories: Array.from(byCat.values()) };
@@ -434,52 +436,53 @@ function buildCatfinderAndVendor(){
   return { catfinder, vendor };
 }
 
-// Cache simples em memória + recarga a cada 60s
+// cache simples + rebuild a cada 60s
 let CAT_CACHE = buildCatfinderAndVendor();
 setInterval(() => {
-  try { CAT_CACHE = buildCatfinderAndVendor(); } catch(e){ console.error('rebuild CSV failed', e); }
+  try { CAT_CACHE = buildCatfinderAndVendor(); }
+  catch (e) { console.error('rebuild CSV failed', e); }
 }, 60_000);
 
-// CORS aberto só para estes endpoints públicos (evita 502/CORS no Shopify)
-function setPublicCors(res){
+function setPublicCors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, POST');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Vary', 'Origin');
 }
 
-// CatFinder para o Shopify (flat)
+// endpoints públicos para Shopify
 app.get('/catfinder.json', (req, res) => {
   try {
     setPublicCors(res);
     res.setHeader('Cache-Control', 'no-cache');
     res.json(CAT_CACHE.catfinder);
-  } catch (e){
+  } catch (e) {
     console.error('catfinder endpoint error', e);
     res.status(500).json({ error: 'catfinder_failed' });
   }
 });
 
-// Estrutura aninhada para o formulário (vendor)
 app.get('/vendor/categories.json', (req, res) => {
   try {
     setPublicCors(res);
     res.setHeader('Cache-Control', 'no-cache');
     res.json(CAT_CACHE.vendor);
-  } catch (e){
+  } catch (e) {
     console.error('vendor categories endpoint error', e);
     res.status(500).json({ error: 'vendor_categories_failed' });
   }
 });
-// --- sanity checks/health
-app.get('/health', (req,res) => res.json({ ok:true, ts: Date.now() }));
 
-// --- rota pública para receber o anúncio do formulário
+// ========== Recebimento de anúncio ==========
+app.options('/vendor/listing', (req, res) => {
+  setPublicCors(res);
+  res.sendStatus(204);
+});
+
 app.post('/vendor/listing', async (req, res) => {
   try {
-    // o formulário envia via fetch(JSON) no seu JS,
-    // ou via <form> + JS que monta um body. Pegamos ambos:
-    const payload = req.body || {};
+    setPublicCors(res);
+
     const {
       category,
       subcategory,
@@ -489,50 +492,14 @@ app.post('/vendor/listing', async (req, res) => {
       city,
       email,        // contato
       description
-    } = payload;
+    } = req.body || {};
 
-    // validações simples
-    if (!category || !subcategory || !title || !price || !email) {
-      return res.status(400).json({ ok:false, error: 'missing_fields' });
-    }
-
-    // TODO: salve em banco, crie ticket, envie e-mail, etc. (opcional)
-    // Exemplo: logar rapidamente:
-    console.log('NEW LISTING', { category, subcategory, item, title, price, city, email });
-
-    // resposta OK
-    return res.json({ ok:true, message:'listing_received' });
-  } catch (e) {
-    console.error('vendor/listing error:', e);
-    return res.status(500).json({ ok:false, error:'server_error' });
-  }
-});
-
-// --- preflight CORS explícito
-app.options('/vendor/listing', (req, res) => res.sendStatus(204));
-
-// --- recepção do anúncio (única rota)
-app.post('/vendor/listing', async (req, res) => {
-  try {
-    const payload = req.body || {};
-    const {
-      category,
-      subcategory,
-      item,          // opcional
-      title,
-      price,
-      city,
-      email,
-      description
-    } = payload;
-
-    // validação mínima
     if (!category || !subcategory || !title || !price || !email) {
       return res.status(400).json({ ok: false, error: 'missing_fields' });
     }
 
-    // TODO: persistir em DB / enviar e-mail / criar ticket
-    console.log('NEW LISTING', { category, subcategory, item, title, price, city, email });
+    // Aqui você pode persistir em DB, mandar e-mail, etc.
+    console.log('NEW LISTING', { category, subcategory, item, title, price, city, email, description });
 
     return res.json({ ok: true, message: 'listing_received' });
   } catch (e) {
@@ -541,10 +508,10 @@ app.post('/vendor/listing', async (req, res) => {
   }
 });
 
-  }
-});
+// ========== Health ==========
+app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
-// ====== START ======
+// ========== Start ==========
 app.listen(PORT, () => {
   console.log(`CSH service running on :${PORT}`);
 });
