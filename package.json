@@ -1,33 +1,14 @@
 {
-  "name": "csh-auth",
-  "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "engines": { "node": "20.x" },
-  "scripts": {
-    "start": "node index.js",
-    "build:categories": "node scripts/build-catfinder-and-vendor-json.mjs"
-  },
-  "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "cookie-parser": "^1.4.6",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "jsonwebtoken": "^9.0.2",
-    "nodemailer": "^6.9.14",
-    "pg": "^8.11.5",
-    "csv-parse": "^5.5.0"
-  }
-}
-{
   "name": "csh-auth-2",
   "version": "1.0.0",
-  "main": "index.js",
+  "private": true,
   "type": "commonjs",
+  "engines": { "node": "20.x" },
+  "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "build": "echo \"no build step\"",
+    "build:categories": "node scripts/build-catfinder-and-vendor-json.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -35,9 +16,12 @@
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "csv-parse": "^5.5.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.14",
+    "pg": "^8.11.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {
