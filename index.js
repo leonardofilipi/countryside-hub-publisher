@@ -94,6 +94,22 @@ async function ensureSchema() {
         approved boolean default true,
         created_at timestamptz default now()
       );
+            create table if not exists products (
+        id uuid primary key default gen_random_uuid(),
+        owner_email text not null,
+        title text not null,
+        description text,
+        price_cents int not null,
+        currency text not null default 'BRL',
+        status text not null default 'DRAFT',            -- DRAFT, ACTIVE, ARCHIVED
+        shopify_product_id text,                         -- e.g. gid://shopify/Product/123...
+        shopify_handle text,
+        created_at timestamptz default now(),
+        updated_at timestamptz default now()
+      );
+
+      create index if not exists idx_products_owner on products(owner_email);
+
     `);
   } catch (e) {
     console.error('ensureSchema failed', e);
