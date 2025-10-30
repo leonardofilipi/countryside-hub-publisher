@@ -273,6 +273,30 @@ app.post('/auth/reset', async (req, res) => {
 
   res.send('Senha alterada. Você já pode fechar esta aba e entrar novamente.');
 });
+function toCents(v) {
+  if (v == null) return 0;
+  // accepts "123.45", "123,45", number, etc.
+  const n = String(v).replace(',', '.');
+  return Math.round(parseFloat(n) * 100);
+}
+
+// Set vendor metafield on a Shopify product (stores the vendor email)
+async function setVendorMetafield(productGid, vendorEmail) {
+  const M_SET = `
+    mutation metafieldsSet($ownerId: ID!, $metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(ownerId: $ownerId, metafields: $metafields) {
+        metafields { id key namespace type value }
+        userErrors { field message }
+      }
+    }`;
+  const metafields = [{
+    namespace: "csh",
+    key: "vendor_email",
+    type: "single_line_text_field",
+    value: vendorEmail
+  }];
+  await shopifyGraphQL(M_SET, { ownerId: productGid, metafields });
+}
 
 // ===== Reviews =====
 app.post('/reviews', auth, async (req, res) => {
