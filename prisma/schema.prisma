@@ -8,15 +8,17 @@ datasource db {
 }
 
 model Vendor {
-  id           String       @id @default(uuid())
-  email        String       @unique
-  passwordHash String
-  displayName  String?
-  whatsapp     String?
-  status       VendorStatus @default(PENDING)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  sessions     RefreshToken[]
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  displayName   String?
+  whatsapp      String?
+  status        VendorStatus @default(PENDING)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // optional: refresh tokens per device
+  sessions      RefreshToken[]
 }
 
 model RefreshToken {
@@ -25,6 +27,7 @@ model RefreshToken {
   token     String   @unique
   createdAt DateTime @default(now())
   expiresAt DateTime
+
   vendor    Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 }
 
