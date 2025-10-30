@@ -5,7 +5,7 @@
   "type": "module",
   "engines": { "node": "20.x" },
   "main": "index.js",
-  "scripts": {
+  "scripts": { "start": "node index.js", "build": "echo \"no build step\"" }
     "start": "node index.js",
     "build": "echo \"no build step\"",
     "build:categories": "node scripts/build-catfinder-and-vendor-json.mjs"
