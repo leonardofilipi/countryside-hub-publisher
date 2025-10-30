@@ -329,6 +329,206 @@ app.get('/reviews/:sellerEmail', async (req, res) => {
   );
   res.json(rows);
 });
+// ========== Vendor Products API ==========
+// All routes require login; they only operate on the authenticated vendor's products.
+
+app.get('/vendor/products', auth, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+    const { rows } = await pool.query(
+      'select * from products where owner_email=$1 order by created_at desc limit 200',
+      [req.user.email]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'list_failed' });
+  }
+});
+
+// Create local product; optionally publish to Shopify immediately
+app.post('/vendor/products', auth, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+    const { title, description, price, currency = 'BRL', publishToShopify = false, tags = [] } = req.body || {};
+    if (!title || !price) return res.status(400).json({ error: 'missing_fields' });
+
+    const price_cents = toCents(price);
+    const { rows } = await pool.query(
+      `insert into products (owner_email, title, description, price_cents, currency, status)
+       values ($1,$2,$3,$4,$5,$6)
+       returning *`,
+      [req.user.email, title, description || null, price_cents, currency, 'DRAFT']
+    );
+    const product = rows[0];
+
+    // Optionally create on Shopify
+    if (publishToShopify) {
+      const M_CREATE = `
+        mutation productCreate($input: ProductInput!) {
+          productCreate(input: $input) {
+            product { id handle }
+            userErrors { field message }
+          }
+        }`;
+      const input = {
+        title,
+        descriptionHtml: description || '',
+        vendor: "Countryside Hub",
+        tags: Array.isArray(tags) ? tags : [],
+        variants: [{ price: (price_cents / 100).toFixed(2) }] // single variant
+      };
+      const resp = await shopifyGraphQL(M_CREATE, { input });
+      const gid = resp.productCreate?.product?.id;
+      const handle = resp.productCreate?.product?.handle;
+      if (!gid) return res.status(502).json({ error: 'shopify_create_failed' });
+
+      await setVendorMetafield(gid, req.user.email);
+
+      await pool.query(
+        'update products set shopify_product_id=$1, shopify_handle=$2, status=$3, updated_at=now() where id=$4',
+        [gid, handle || null, 'ACTIVE', product.id]
+      );
+      product.shopify_product_id = gid;
+      product.shopify_handle = handle || null;
+      product.status = 'ACTIVE';
+    }
+
+    res.status(201).json(product);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'create_failed' });
+  }
+});
+
+// Update local product; if linked, update Shopify too
+app.put('/vendor/products/:id', auth, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+    const { id } = req.params;
+    const { title, description, price, currency, status } = req.body || {};
+
+    // ensure ownership
+    const { rows: chk } = await pool.query(
+      'select * from products where id=$1 and owner_email=$2',
+      [id, req.user.email]
+    );
+    if (!chk.length) return res.status(404).json({ error: 'not_found' });
+
+    const p = chk[0];
+    const price_cents = price != null ? toCents(price) : p.price_cents;
+
+    const { rows } = await pool.query(
+      `update products
+       set title=coalesce($1,title),
+           description=coalesce($2,description),
+           price_cents=$3,
+           currency=coalesce($4,currency),
+           status=coalesce($5,status),
+           updated_at=now()
+       where id=$6
+       returning *`,
+       [title, description, price_cents, currency, status, id]
+    );
+    const updated = rows[0];
+
+    // If linked to Shopify, push updates (title/description/price)
+    if (updated.shopify_product_id) {
+      const M_UPDATE = `
+        mutation productUpdate($input: ProductInput!) {
+          productUpdate(input: $input) {
+            product { id handle }
+            userErrors { field message }
+          }
+        }`;
+      const input = {
+        id: updated.shopify_product_id,
+        title: updated.title,
+        descriptionHtml: updated.description || '',
+        variants: [{ price: (updated.price_cents / 100).toFixed(2) }]
+      };
+      await shopifyGraphQL(M_UPDATE, { input });
+      await setVendorMetafield(updated.shopify_product_id, req.user.email);
+    }
+
+    res.json(updated);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'update_failed' });
+  }
+});
+
+// Archive locally; optional: delete on Shopify
+app.delete('/vendor/products/:id', auth, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+    const { id } = req.params;
+
+    const { rows: chk } = await pool.query(
+      'select * from products where id=$1 and owner_email=$2',
+      [id, req.user.email]
+    );
+    if (!chk.length) return res.status(404).json({ error: 'not_found' });
+
+    await pool.query(
+      'update products set status=$1, updated_at=now() where id=$2',
+      ['ARCHIVED', id]
+    );
+
+    // If you want to actually delete from Shopify, uncomment below:
+    // if (chk[0].shopify_product_id) {
+    //   const M_DEL = `
+    //     mutation productDelete($id: ID!) {
+    //       productDelete(input: { id: $id }) {
+    //         deletedProductId
+    //         userErrors { field message }
+    //       }
+    //     }`;
+    //   await shopifyGraphQL(M_DEL, { id: chk[0].shopify_product_id });
+    // }
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'delete_failed' });
+  }
+});
+
+// Link an existing Shopify product to this vendor (adds metafield + saves GID locally)
+app.post('/vendor/products/:id/link-shopify', auth, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+    const { id } = req.params;
+    const { shopifyProductGid } = req.body || {};
+    if (!shopifyProductGid) return res.status(400).json({ error: 'gid_required' });
+
+    const { rows: chk } = await pool.query(
+      'select * from products where id=$1 and owner_email=$2',
+      [id, req.user.email]
+    );
+    if (!chk.length) return res.status(404).json({ error: 'not_found' });
+
+    // ensure the product exists and get handle
+    const Q = `
+      query ($id: ID!) { product(id: $id) { id handle } }
+    `;
+    const found = await shopifyGraphQL(Q, { id: shopifyProductGid });
+    const node = found.product;
+    if (!node?.id) return res.status(404).json({ error: 'shopify_not_found' });
+
+    await setVendorMetafield(node.id, req.user.email);
+
+    const { rows } = await pool.query(
+      'update products set shopify_product_id=$1, shopify_handle=$2, status=$3, updated_at=now() where id=$4 returning *',
+      [node.id, node.handle || null, 'ACTIVE', id]
+    );
+
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'link_failed' });
+  }
+});
 
 // ===== Shopify Admin helper =====
 async function shopifyGraphQL(query, variables = {}) {
