@@ -2,14 +2,14 @@
   "name": "csh-auth-2",
   "version": "1.0.0",
   "private": true,
-  "type": "commonjs",
+  "type": "module",
   "engines": { "node": "20.x" },
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "build": "echo \"no build step\"",
     "build:categories": "node scripts/build-catfinder-and-vendor-json.mjs",
-    "postinstall": "prisma generate"
+    
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",
