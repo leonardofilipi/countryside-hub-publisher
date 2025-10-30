@@ -1,0 +1,12 @@
+csh-auth-2/
+  src/
+    server.ts
+    env.ts
+    prisma.ts
+    auth/
+      routes.ts
+      controller.ts
+      middleware.ts
+      validators.ts
+  prisma/
+    schema.prisma
