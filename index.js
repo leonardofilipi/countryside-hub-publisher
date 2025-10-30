@@ -1,4 +1,4 @@
-// index.js
+// index.js (ESM)
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -12,24 +12,29 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// ========== Setup de caminho ==========
 const { Pool } = pkg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ========== ENV ==========
+// ===== ENV =====
 const {
+  NODE_ENV = 'production',
   PORT = 10000,
   JWT_SECRET = 'change-me',
-  CORS_ORIGIN = '',        // ex: "https://country…com,https://admin.shopify.com"
-  PUBLIC_URL = '',         // ex: "https://csh-auth-2.onrender.com"
+  CORS_ORIGIN = '',                  // "https://countrysidehub.com,https://www.countrysidehub.com,https://admin.shopify.com,https://<store>.myshopify.com"
+  COOKIE_DOMAIN,                     // e.g. countrysidehub.com
+  PUBLIC_URL = '',                   // e.g. "https://csh-auth-2.onrender.com"
+
   SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, MAIL_FROM,
+
   DATABASE_URL,
-  SHOPIFY_STORE,           // ex: "your-store.myshopify.com"
+
+  // Shopify Admin (use the myshopify.com domain here)
+  SHOPIFY_ADMIN_DOMAIN,              // e.g. "<store>.myshopify.com"
   SHOPIFY_ADMIN_TOKEN
 } = process.env;
 
-// ========== App & Middlewares ==========
+// ===== App =====
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -39,53 +44,64 @@ app.use(cors({
   credentials: true,
 }));
 
-// ========== DB (Postgres opcional) ==========
+// ===== DB (Postgres) =====
 const pool = DATABASE_URL
   ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } })
   : null;
 
 async function ensureSchema() {
   if (!pool) return;
-  await pool.query(`
-    create extension if not exists pgcrypto;
+  try {
+    await pool.query(`
+      do $$ begin
+        begin
+          create extension if not exists pgcrypto;
+        exception when others then
+          -- ignore extension errors
+          null;
+        end;
+      end $$;
 
-    create table if not exists users (
-      id uuid primary key default gen_random_uuid(),
-      email text unique not null,
-      password_hash text not null,
-      name text,
-      phone text,
-      verified boolean default false,
-      created_at timestamptz default now()
-    );
+      create table if not exists users (
+        id uuid primary key default gen_random_uuid(),
+        email text unique not null,
+        password_hash text not null,
+        name text,
+        phone text,
+        verified boolean default false,
+        created_at timestamptz default now()
+      );
 
-    create table if not exists verify_tokens (
-      token uuid primary key,
-      user_email text not null,
-      created_at timestamptz default now()
-    );
+      create table if not exists verify_tokens (
+        token uuid primary key,
+        user_email text not null,
+        created_at timestamptz default now()
+      );
 
-    create table if not exists reset_tokens (
-      token uuid primary key,
-      user_email text not null,
-      created_at timestamptz default now()
-    );
+      create table if not exists reset_tokens (
+        token uuid primary key,
+        user_email text not null,
+        created_at timestamptz default now()
+      );
 
-    create table if not exists reviews (
-      id uuid primary key default gen_random_uuid(),
-      seller_email text not null,
-      reviewer_email text not null,
-      rating int check (rating between 1 and 5) not null,
-      title text,
-      body text,
-      approved boolean default true,
-      created_at timestamptz default now()
-    );
-  `);
+      create table if not exists reviews (
+        id uuid primary key default gen_random_uuid(),
+        seller_email text not null,
+        reviewer_email text not null,
+        rating int check (rating between 1 and 5) not null,
+        title text,
+        body text,
+        approved boolean default true,
+        created_at timestamptz default now()
+      );
+    `);
+  } catch (e) {
+    console.error('ensureSchema failed', e);
+  }
 }
 ensureSchema().catch(console.error);
 
-// ========== Mailer ==========
+// ===== Mailer =====
 const transporter = nodemailer.createTransport({
   host: SMTP_HOST,
   port: Number(SMTP_PORT || 465),
@@ -93,13 +109,22 @@ const transporter = nodemailer.createTransport({
   auth: { user: SMTP_USER, pass: SMTP_PASS },
 });
 
-// ========== Helpers de sessão ==========
+// ===== Session helpers =====
 function setSession(res, payload) {
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
-  res.cookie('csh_sid', token, { httpOnly: true, sameSite: 'lax', secure: true, path: '/' });
+  res.cookie('csh_sid', token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: NODE_ENV === 'production',
+    path: '/',
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {})
+  });
 }
 function clearSession(res) {
-  res.clearCookie('csh_sid', { path: '/' });
+  res.clearCookie('csh_sid', {
+    path: '/',
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {})
+  });
 }
 function auth(req, res, next) {
   const t = req.cookies.csh_sid;
@@ -112,10 +137,11 @@ function auth(req, res, next) {
   }
 }
 
-// ========== AUTH ==========
+// ===== AUTH =====
 app.post('/auth/register', async (req, res) => {
   const { email, password, name, phone } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'email_password_required' });
+  if (String(password).length < 8) return res.status(400).json({ error: 'weak_password' });
 
   const hash = await bcrypt.hash(password, 10);
 
@@ -183,7 +209,7 @@ app.get('/auth/me', auth, async (req, res) => {
   res.json(rows[0] || { email: req.user.email, verified: false });
 });
 
-app.post('/auth/logout', (req, res) => { clearSession(res); res.json({ ok: true }); });
+app.post('/auth/logout', (_req, res) => { clearSession(res); res.json({ ok: true }); });
 
 app.post('/auth/request-reset', async (req, res) => {
   const { email } = req.body || {};
@@ -218,7 +244,8 @@ app.get('/auth/reset', (req, res) => {
 });
 
 app.post('/auth/reset', async (req, res) => {
-  const { token, password } = req.body;
+  const { token, password } = req.body || {};
+  if (!token || !password) return res.status(400).send('Dados inválidos');
   if (!pool) return res.status(500).send('DB indisponível');
 
   const { rows } = await pool.query('select user_email from reset_tokens where token=$1', [token]);
@@ -231,7 +258,7 @@ app.post('/auth/reset', async (req, res) => {
   res.send('Senha alterada. Você já pode fechar esta aba e entrar novamente.');
 });
 
-// ========== Reviews ==========
+// ===== Reviews =====
 app.post('/reviews', auth, async (req, res) => {
   const { sellerEmail, rating, title, body } = req.body || {};
   if (!sellerEmail || !rating) return res.status(400).json({ error: 'missing_fields' });
@@ -243,6 +270,8 @@ app.post('/reviews', auth, async (req, res) => {
   );
 
   res.json({ ok: true });
+
+  // fire-and-forget recompute in Shopify metaobject
   try {
     await fetch(`${PUBLIC_URL}/seller/recompute`, {
       method: 'POST',
@@ -261,12 +290,12 @@ app.get('/reviews/:sellerEmail', async (req, res) => {
   res.json(rows);
 });
 
-// ========== Shopify helper (opcional) ==========
+// ===== Shopify Admin helper =====
 async function shopifyGraphQL(query, variables = {}) {
-  if (!SHOPIFY_STORE || !SHOPIFY_ADMIN_TOKEN) {
+  if (!SHOPIFY_ADMIN_DOMAIN || !SHOPIFY_ADMIN_TOKEN) {
     throw new Error('Shopify Admin API não configurada');
   }
-  const r = await fetch(`https://${SHOPIFY_STORE}/admin/api/2024-07/graphql.json`, {
+  const r = await fetch(`https://${SHOPIFY_ADMIN_DOMAIN}/admin/api/2024-07/graphql.json`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -335,9 +364,7 @@ app.post('/seller/recompute', async (req, res) => {
   }
 });
 
-// ============================================================
-// ========== Categorias a partir do CSV (sem shell) ==========
-// ============================================================
+// ===== Categories from CSV =====
 const CSV_PATH = path.join(__dirname, 'data', 'csh_categories.csv');
 
 function slugify(txt) {
@@ -436,8 +463,15 @@ function buildCatfinderAndVendor() {
   return { catfinder, vendor };
 }
 
-// cache simples + rebuild a cada 60s
-let CAT_CACHE = buildCatfinderAndVendor();
+// start with safe empty cache if CSV missing
+let CAT_CACHE = {
+  catfinder: { rootAll: { slug: 'todas-as-categorias', name: 'Todas as Categorias', url: '/collections/all' }, items: [] },
+  vendor: { categories: [] }
+};
+try { CAT_CACHE = buildCatfinderAndVendor(); }
+catch { console.warn('CSV not found at startup; serving empty categories'); }
+
+// rebuild every 60s
 setInterval(() => {
   try { CAT_CACHE = buildCatfinderAndVendor(); }
   catch (e) { console.error('rebuild CSV failed', e); }
@@ -450,7 +484,7 @@ function setPublicCors(res) {
   res.setHeader('Vary', 'Origin');
 }
 
-// endpoints públicos para Shopify
+// public endpoints for Shopify
 app.get('/catfinder.json', (req, res) => {
   try {
     setPublicCors(res);
@@ -473,8 +507,8 @@ app.get('/vendor/categories.json', (req, res) => {
   }
 });
 
-// ========== Recebimento de anúncio ==========
-app.options('/vendor/listing', (req, res) => {
+// receive ad from storefront
+app.options('/vendor/listing', (_req, res) => {
   setPublicCors(res);
   res.sendStatus(204);
 });
@@ -486,11 +520,11 @@ app.post('/vendor/listing', async (req, res) => {
     const {
       category,
       subcategory,
-      item,         // opcional
+      item,         // optional
       title,
       price,
       city,
-      email,        // contato
+      email,        // contact
       description
     } = req.body || {};
 
@@ -498,7 +532,7 @@ app.post('/vendor/listing', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'missing_fields' });
     }
 
-    // Aqui você pode persistir em DB, mandar e-mail, etc.
+    // TODO: persist in DB or forward to Zoho here
     console.log('NEW LISTING', { category, subcategory, item, title, price, city, email, description });
 
     return res.json({ ok: true, message: 'listing_received' });
@@ -508,10 +542,9 @@ app.post('/vendor/listing', async (req, res) => {
   }
 });
 
-// ========== Health ==========
-app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
+// health
+app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
-// ========== Start ==========
 app.listen(PORT, () => {
   console.log(`CSH service running on :${PORT}`);
 });
