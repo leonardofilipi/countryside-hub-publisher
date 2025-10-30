@@ -133,8 +133,8 @@ function setSession(res, payload) {
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
   res.cookie('csh_sid', token, {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: NODE_ENV === 'production',
+    sameSite: 'none',           // <-- important for cross-site (Shopify page -> onrender API)
+    secure: true,               // <-- required by browsers when SameSite=None
     path: '/',
     ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
   });
