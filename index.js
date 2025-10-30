@@ -1,4 +1,5 @@
 // index.js (ESM)
+// -------------------------------------------------------
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -21,30 +22,33 @@ const {
   NODE_ENV = 'production',
   PORT = 10000,
   JWT_SECRET = 'change-me',
-  CORS_ORIGIN = '',                  // "https://countrysidehub.com,https://www.countrysidehub.com,https://admin.shopify.com,https://<store>.myshopify.com"
-  COOKIE_DOMAIN,                     // e.g. countrysidehub.com
-  PUBLIC_URL = '',                   // e.g. "https://csh-auth-2.onrender.com"
+
+  CORS_ORIGIN = '',                 // CSV of origins
+  COOKIE_DOMAIN,                    // e.g. countrysidehub.com
+  PUBLIC_URL = '',                  // e.g. https://csh-auth-2.onrender.com
 
   SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, MAIL_FROM,
 
   DATABASE_URL,
 
-  // Shopify Admin (use the myshopify.com domain here)
-  SHOPIFY_ADMIN_DOMAIN,              // e.g. "<store>.myshopify.com"
+  // Shopify Admin
+  SHOPIFY_ADMIN_DOMAIN,             // <store>.myshopify.com
   SHOPIFY_ADMIN_TOKEN
 } = process.env;
 
-// ===== App =====
+// ===== APP =====
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(cors({
-  origin: CORS_ORIGIN ? CORS_ORIGIN.split(',').map(s => s.trim()) : true,
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: CORS_ORIGIN ? CORS_ORIGIN.split(',').map(s => s.trim()) : true,
+    credentials: true,
+  })
+);
 
-// ===== DB (Postgres) =====
+// ===== DB =====
 const pool = DATABASE_URL
   ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } })
   : null;
@@ -57,7 +61,6 @@ async function ensureSchema() {
         begin
           create extension if not exists pgcrypto;
         exception when others then
-          -- ignore extension errors
           null;
         end;
       end $$;
@@ -94,22 +97,22 @@ async function ensureSchema() {
         approved boolean default true,
         created_at timestamptz default now()
       );
-            create table if not exists products (
+
+      create table if not exists products (
         id uuid primary key default gen_random_uuid(),
         owner_email text not null,
         title text not null,
         description text,
         price_cents int not null,
         currency text not null default 'BRL',
-        status text not null default 'DRAFT',            -- DRAFT, ACTIVE, ARCHIVED
-        shopify_product_id text,                         -- e.g. gid://shopify/Product/123...
+        status text not null default 'DRAFT',      -- DRAFT, ACTIVE, ARCHIVED
+        shopify_product_id text,                   -- gid://shopify/Product/...
         shopify_handle text,
         created_at timestamptz default now(),
         updated_at timestamptz default now()
       );
 
       create index if not exists idx_products_owner on products(owner_email);
-
     `);
   } catch (e) {
     console.error('ensureSchema failed', e);
@@ -117,7 +120,7 @@ async function ensureSchema() {
 }
 ensureSchema().catch(console.error);
 
-// ===== Mailer =====
+// ===== MAILER =====
 const transporter = nodemailer.createTransport({
   host: SMTP_HOST,
   port: Number(SMTP_PORT || 465),
@@ -125,7 +128,7 @@ const transporter = nodemailer.createTransport({
   auth: { user: SMTP_USER, pass: SMTP_PASS },
 });
 
-// ===== Session helpers =====
+// ===== SESSION HELPERS =====
 function setSession(res, payload) {
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
   res.cookie('csh_sid', token, {
@@ -133,13 +136,13 @@ function setSession(res, payload) {
     sameSite: 'lax',
     secure: NODE_ENV === 'production',
     path: '/',
-    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {})
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
   });
 }
 function clearSession(res) {
   res.clearCookie('csh_sid', {
     path: '/',
-    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {})
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
   });
 }
 function auth(req, res, next) {
@@ -153,7 +156,7 @@ function auth(req, res, next) {
   }
 }
 
-// ===== AUTH =====
+// ===== AUTH ROUTES =====
 app.post('/auth/register', async (req, res) => {
   const { email, password, name, phone } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'email_password_required' });
@@ -209,7 +212,10 @@ app.post('/auth/login', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'email_password_required' });
   if (!pool) return res.status(500).json({ error: 'db_unavailable' });
 
-  const { rows } = await pool.query('select email, password_hash, verified, name from users where email=$1', [email]);
+  const { rows } = await pool.query(
+    'select email, password_hash, verified, name from users where email=$1',
+    [email]
+  );
   if (!rows.length) return res.status(401).json({ error: 'invalid_credentials' });
 
   const ok = await bcrypt.compare(password, rows[0].password_hash);
@@ -221,11 +227,17 @@ app.post('/auth/login', async (req, res) => {
 
 app.get('/auth/me', auth, async (req, res) => {
   if (!pool) return res.json({ email: req.user.email, verified: false });
-  const { rows } = await pool.query('select email, verified, name, phone from users where email=$1', [req.user.email]);
+  const { rows } = await pool.query(
+    'select email, verified, name, phone from users where email=$1',
+    [req.user.email]
+  );
   res.json(rows[0] || { email: req.user.email, verified: false });
 });
 
-app.post('/auth/logout', (_req, res) => { clearSession(res); res.json({ ok: true }); });
+app.post('/auth/logout', (_req, res) => {
+  clearSession(res);
+  res.json({ ok: true });
+});
 
 app.post('/auth/request-reset', async (req, res) => {
   const { email } = req.body || {};
@@ -273,32 +285,8 @@ app.post('/auth/reset', async (req, res) => {
 
   res.send('Senha alterada. Você já pode fechar esta aba e entrar novamente.');
 });
-function toCents(v) {
-  if (v == null) return 0;
-  // accepts "123.45", "123,45", number, etc.
-  const n = String(v).replace(',', '.');
-  return Math.round(parseFloat(n) * 100);
-}
 
-// Set vendor metafield on a Shopify product (stores the vendor email)
-async function setVendorMetafield(productGid, vendorEmail) {
-  const M_SET = `
-    mutation metafieldsSet($ownerId: ID!, $metafields: [MetafieldsSetInput!]!) {
-      metafieldsSet(ownerId: $ownerId, metafields: $metafields) {
-        metafields { id key namespace type value }
-        userErrors { field message }
-      }
-    }`;
-  const metafields = [{
-    namespace: "csh",
-    key: "vendor_email",
-    type: "single_line_text_field",
-    value: vendorEmail
-  }];
-  await shopifyGraphQL(M_SET, { ownerId: productGid, metafields });
-}
-
-// ===== Reviews =====
+// ===== REVIEWS =====
 app.post('/reviews', auth, async (req, res) => {
   const { sellerEmail, rating, title, body } = req.body || {};
   if (!sellerEmail || !rating) return res.status(400).json({ error: 'missing_fields' });
@@ -311,14 +299,15 @@ app.post('/reviews', auth, async (req, res) => {
 
   res.json({ ok: true });
 
-  // fire-and-forget recompute in Shopify metaobject
   try {
     await fetch(`${PUBLIC_URL}/seller/recompute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sellerEmail }),
     });
-  } catch (e) { console.warn('recompute failed (silent):', e?.message); }
+  } catch (e) {
+    console.warn('recompute failed (silent):', e?.message);
+  }
 });
 
 app.get('/reviews/:sellerEmail', async (req, res) => {
@@ -329,208 +318,8 @@ app.get('/reviews/:sellerEmail', async (req, res) => {
   );
   res.json(rows);
 });
-// ========== Vendor Products API ==========
-// All routes require login; they only operate on the authenticated vendor's products.
 
-app.get('/vendor/products', auth, async (req, res) => {
-  try {
-    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
-    const { rows } = await pool.query(
-      'select * from products where owner_email=$1 order by created_at desc limit 200',
-      [req.user.email]
-    );
-    res.json(rows);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'list_failed' });
-  }
-});
-
-// Create local product; optionally publish to Shopify immediately
-app.post('/vendor/products', auth, async (req, res) => {
-  try {
-    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
-    const { title, description, price, currency = 'BRL', publishToShopify = false, tags = [] } = req.body || {};
-    if (!title || !price) return res.status(400).json({ error: 'missing_fields' });
-
-    const price_cents = toCents(price);
-    const { rows } = await pool.query(
-      `insert into products (owner_email, title, description, price_cents, currency, status)
-       values ($1,$2,$3,$4,$5,$6)
-       returning *`,
-      [req.user.email, title, description || null, price_cents, currency, 'DRAFT']
-    );
-    const product = rows[0];
-
-    // Optionally create on Shopify
-    if (publishToShopify) {
-      const M_CREATE = `
-        mutation productCreate($input: ProductInput!) {
-          productCreate(input: $input) {
-            product { id handle }
-            userErrors { field message }
-          }
-        }`;
-      const input = {
-        title,
-        descriptionHtml: description || '',
-        vendor: "Countryside Hub",
-        tags: Array.isArray(tags) ? tags : [],
-        variants: [{ price: (price_cents / 100).toFixed(2) }] // single variant
-      };
-      const resp = await shopifyGraphQL(M_CREATE, { input });
-      const gid = resp.productCreate?.product?.id;
-      const handle = resp.productCreate?.product?.handle;
-      if (!gid) return res.status(502).json({ error: 'shopify_create_failed' });
-
-      await setVendorMetafield(gid, req.user.email);
-
-      await pool.query(
-        'update products set shopify_product_id=$1, shopify_handle=$2, status=$3, updated_at=now() where id=$4',
-        [gid, handle || null, 'ACTIVE', product.id]
-      );
-      product.shopify_product_id = gid;
-      product.shopify_handle = handle || null;
-      product.status = 'ACTIVE';
-    }
-
-    res.status(201).json(product);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'create_failed' });
-  }
-});
-
-// Update local product; if linked, update Shopify too
-app.put('/vendor/products/:id', auth, async (req, res) => {
-  try {
-    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
-    const { id } = req.params;
-    const { title, description, price, currency, status } = req.body || {};
-
-    // ensure ownership
-    const { rows: chk } = await pool.query(
-      'select * from products where id=$1 and owner_email=$2',
-      [id, req.user.email]
-    );
-    if (!chk.length) return res.status(404).json({ error: 'not_found' });
-
-    const p = chk[0];
-    const price_cents = price != null ? toCents(price) : p.price_cents;
-
-    const { rows } = await pool.query(
-      `update products
-       set title=coalesce($1,title),
-           description=coalesce($2,description),
-           price_cents=$3,
-           currency=coalesce($4,currency),
-           status=coalesce($5,status),
-           updated_at=now()
-       where id=$6
-       returning *`,
-       [title, description, price_cents, currency, status, id]
-    );
-    const updated = rows[0];
-
-    // If linked to Shopify, push updates (title/description/price)
-    if (updated.shopify_product_id) {
-      const M_UPDATE = `
-        mutation productUpdate($input: ProductInput!) {
-          productUpdate(input: $input) {
-            product { id handle }
-            userErrors { field message }
-          }
-        }`;
-      const input = {
-        id: updated.shopify_product_id,
-        title: updated.title,
-        descriptionHtml: updated.description || '',
-        variants: [{ price: (updated.price_cents / 100).toFixed(2) }]
-      };
-      await shopifyGraphQL(M_UPDATE, { input });
-      await setVendorMetafield(updated.shopify_product_id, req.user.email);
-    }
-
-    res.json(updated);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'update_failed' });
-  }
-});
-
-// Archive locally; optional: delete on Shopify
-app.delete('/vendor/products/:id', auth, async (req, res) => {
-  try {
-    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
-    const { id } = req.params;
-
-    const { rows: chk } = await pool.query(
-      'select * from products where id=$1 and owner_email=$2',
-      [id, req.user.email]
-    );
-    if (!chk.length) return res.status(404).json({ error: 'not_found' });
-
-    await pool.query(
-      'update products set status=$1, updated_at=now() where id=$2',
-      ['ARCHIVED', id]
-    );
-
-    // If you want to actually delete from Shopify, uncomment below:
-    // if (chk[0].shopify_product_id) {
-    //   const M_DEL = `
-    //     mutation productDelete($id: ID!) {
-    //       productDelete(input: { id: $id }) {
-    //         deletedProductId
-    //         userErrors { field message }
-    //       }
-    //     }`;
-    //   await shopifyGraphQL(M_DEL, { id: chk[0].shopify_product_id });
-    // }
-
-    res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'delete_failed' });
-  }
-});
-
-// Link an existing Shopify product to this vendor (adds metafield + saves GID locally)
-app.post('/vendor/products/:id/link-shopify', auth, async (req, res) => {
-  try {
-    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
-    const { id } = req.params;
-    const { shopifyProductGid } = req.body || {};
-    if (!shopifyProductGid) return res.status(400).json({ error: 'gid_required' });
-
-    const { rows: chk } = await pool.query(
-      'select * from products where id=$1 and owner_email=$2',
-      [id, req.user.email]
-    );
-    if (!chk.length) return res.status(404).json({ error: 'not_found' });
-
-    // ensure the product exists and get handle
-    const Q = `
-      query ($id: ID!) { product(id: $id) { id handle } }
-    `;
-    const found = await shopifyGraphQL(Q, { id: shopifyProductGid });
-    const node = found.product;
-    if (!node?.id) return res.status(404).json({ error: 'shopify_not_found' });
-
-    await setVendorMetafield(node.id, req.user.email);
-
-    const { rows } = await pool.query(
-      'update products set shopify_product_id=$1, shopify_handle=$2, status=$3, updated_at=now() where id=$4 returning *',
-      [node.id, node.handle || null, 'ACTIVE', id]
-    );
-
-    res.json(rows[0]);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'link_failed' });
-  }
-});
-
-// ===== Shopify Admin helper =====
+// ===== SHOPIFY HELPERS =====
 async function shopifyGraphQL(query, variables = {}) {
   if (!SHOPIFY_ADMIN_DOMAIN || !SHOPIFY_ADMIN_TOKEN) {
     throw new Error('Shopify Admin API não configurada');
@@ -581,7 +370,7 @@ app.post('/seller/recompute', async (req, res) => {
       }`;
     const findQ = `contact_email_e_mail_de_contato:"${sellerEmail.replace(/"/g, '\\"')}"`;
     const found = await shopifyGraphQL(Q_FIND, { q: findQ });
-    const node = found.metaobjects.nodes[0];
+    const node = found.metaobjects?.nodes?.[0];
     if (!node) return res.status(404).json({ error: 'metaobject_not_found' });
 
     const M_UPDATE = `
@@ -604,7 +393,209 @@ app.post('/seller/recompute', async (req, res) => {
   }
 });
 
-// ===== Categories from CSV =====
+// ===== UTIL =====
+function toCents(v) {
+  if (v == null) return 0;
+  const n = String(v).replace(',', '.');
+  return Math.round(parseFloat(n) * 100);
+}
+
+async function setVendorMetafield(productGid, vendorEmail) {
+  const M_SET = `
+    mutation metafieldsSet($ownerId: ID!, $metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(ownerId: $ownerId, metafields: $metafields) {
+        metafields { id key namespace type value }
+        userErrors { field message }
+      }
+    }`;
+  const metafields = [{
+    namespace: "csh",
+    key: "vendor_email",
+    type: "single_line_text_field",
+    value: vendorEmail
+  }];
+  await shopifyGraphQL(M_SET, { ownerId: productGid, metafields });
+}
+
+// ===== VENDOR PRODUCTS (CRUD + Shopify) =====
+app.get('/vendor/products', auth, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+    const { rows } = await pool.query(
+      'select * from products where owner_email=$1 order by created_at desc limit 200',
+      [req.user.email]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'list_failed' });
+  }
+});
+
+app.post('/vendor/products', auth, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+    const { title, description, price, currency = 'BRL', publishToShopify = false, tags = [] } = req.body || {};
+    if (!title || !price) return res.status(400).json({ error: 'missing_fields' });
+
+    const price_cents = toCents(price);
+    const { rows } = await pool.query(
+      `insert into products (owner_email, title, description, price_cents, currency, status)
+       values ($1,$2,$3,$4,$5,$6)
+       returning *`,
+      [req.user.email, title, description || null, price_cents, currency, 'DRAFT']
+    );
+    const product = rows[0];
+
+    if (publishToShopify) {
+      const M_CREATE = `
+        mutation productCreate($input: ProductInput!) {
+          productCreate(input: $input) {
+            product { id handle }
+            userErrors { field message }
+          }
+        }`;
+      const input = {
+        title,
+        descriptionHtml: description || '',
+        vendor: "Countryside Hub",
+        tags: Array.isArray(tags) ? tags : [],
+        variants: [{ price: (price_cents / 100).toFixed(2) }]
+      };
+      const resp = await shopifyGraphQL(M_CREATE, { input });
+      const gid = resp.productCreate?.product?.id;
+      const handle = resp.productCreate?.product?.handle;
+      if (!gid) return res.status(502).json({ error: 'shopify_create_failed' });
+
+      await setVendorMetafield(gid, req.user.email);
+
+      await pool.query(
+        'update products set shopify_product_id=$1, shopify_handle=$2, status=$3, updated_at=now() where id=$4',
+        [gid, handle || null, 'ACTIVE', product.id]
+      );
+      product.shopify_product_id = gid;
+      product.shopify_handle = handle || null;
+      product.status = 'ACTIVE';
+    }
+
+    res.status(201).json(product);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'create_failed' });
+  }
+});
+
+app.put('/vendor/products/:id', auth, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+    const { id } = req.params;
+    const { title, description, price, currency, status } = req.body || {};
+
+    const { rows: chk } = await pool.query(
+      'select * from products where id=$1 and owner_email=$2',
+      [id, req.user.email]
+    );
+    if (!chk.length) return res.status(404).json({ error: 'not_found' });
+
+    const p = chk[0];
+    const price_cents = price != null ? toCents(price) : p.price_cents;
+
+    const { rows } = await pool.query(
+      `update products
+       set title=coalesce($1,title),
+           description=coalesce($2,description),
+           price_cents=$3,
+           currency=coalesce($4,currency),
+           status=coalesce($5,status),
+           updated_at=now()
+       where id=$6
+       returning *`,
+      [title, description, price_cents, currency, status, id]
+    );
+    const updated = rows[0];
+
+    if (updated.shopify_product_id) {
+      const M_UPDATE = `
+        mutation productUpdate($input: ProductInput!) {
+          productUpdate(input: $input) {
+            product { id handle }
+            userErrors { field message }
+          }
+        }`;
+      const input = {
+        id: updated.shopify_product_id,
+        title: updated.title,
+        descriptionHtml: updated.description || '',
+        variants: [{ price: (updated.price_cents / 100).toFixed(2) }]
+      };
+      await shopifyGraphQL(M_UPDATE, { input });
+      await setVendorMetafield(updated.shopify_product_id, req.user.email);
+    }
+
+    res.json(updated);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'update_failed' });
+  }
+});
+
+app.delete('/vendor/products/:id', auth, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+    const { id } = req.params;
+
+    const { rows: chk } = await pool.query(
+      'select * from products where id=$1 and owner_email=$2',
+      [id, req.user.email]
+    );
+    if (!chk.length) return res.status(404).json({ error: 'not_found' });
+
+    await pool.query(
+      'update products set status=$1, updated_at=now() where id=$2',
+      ['ARCHIVED', id]
+    );
+
+    // To also delete from Shopify, add productDelete mutation here.
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'delete_failed' });
+  }
+});
+
+app.post('/vendor/products/:id/link-shopify', auth, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'db_unavailable' });
+    const { id } = req.params;
+    const { shopifyProductGid } = req.body || {};
+    if (!shopifyProductGid) return res.status(400).json({ error: 'gid_required' });
+
+    const { rows: chk } = await pool.query(
+      'select * from products where id=$1 and owner_email=$2',
+      [id, req.user.email]
+    );
+    if (!chk.length) return res.status(404).json({ error: 'not_found' });
+
+    const Q = `query ($id: ID!) { product(id: $id) { id handle } }`;
+    const found = await shopifyGraphQL(Q, { id: shopifyProductGid });
+    const node = found.product;
+    if (!node?.id) return res.status(404).json({ error: 'shopify_not_found' });
+
+    await setVendorMetafield(node.id, req.user.email);
+
+    const { rows } = await pool.query(
+      'update products set shopify_product_id=$1, shopify_handle=$2, status=$3, updated_at=now() where id=$4 returning *',
+      [node.id, node.handle || null, 'ACTIVE', id]
+    );
+
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'link_failed' });
+  }
+});
+
+// ===== CSV → Catfinder + Vendor categories =====
 const CSV_PATH = path.join(__dirname, 'data', 'csh_categories.csv');
 
 function slugify(txt) {
@@ -703,18 +694,22 @@ function buildCatfinderAndVendor() {
   return { catfinder, vendor };
 }
 
-// start with safe empty cache if CSV missing
 let CAT_CACHE = {
   catfinder: { rootAll: { slug: 'todas-as-categorias', name: 'Todas as Categorias', url: '/collections/all' }, items: [] },
-  vendor: { categories: [] }
+  vendor: { categories: [] },
 };
-try { CAT_CACHE = buildCatfinderAndVendor(); }
-catch { console.warn('CSV not found at startup; serving empty categories'); }
+try {
+  CAT_CACHE = buildCatfinderAndVendor();
+} catch {
+  console.warn('CSV not found at startup; serving empty categories');
+}
 
-// rebuild every 60s
 setInterval(() => {
-  try { CAT_CACHE = buildCatfinderAndVendor(); }
-  catch (e) { console.error('rebuild CSV failed', e); }
+  try {
+    CAT_CACHE = buildCatfinderAndVendor();
+  } catch (e) {
+    console.error('rebuild CSV failed', e);
+  }
 }, 60_000);
 
 function setPublicCors(res) {
@@ -724,8 +719,7 @@ function setPublicCors(res) {
   res.setHeader('Vary', 'Origin');
 }
 
-// public endpoints for Shopify
-app.get('/catfinder.json', (req, res) => {
+app.get('/catfinder.json', (_req, res) => {
   try {
     setPublicCors(res);
     res.setHeader('Cache-Control', 'no-cache');
@@ -736,7 +730,7 @@ app.get('/catfinder.json', (req, res) => {
   }
 });
 
-app.get('/vendor/categories.json', (req, res) => {
+app.get('/vendor/categories.json', (_req, res) => {
   try {
     setPublicCors(res);
     res.setHeader('Cache-Control', 'no-cache');
@@ -747,7 +741,7 @@ app.get('/vendor/categories.json', (req, res) => {
   }
 });
 
-// receive ad from storefront
+// receive listing from storefront
 app.options('/vendor/listing', (_req, res) => {
   setPublicCors(res);
   res.sendStatus(204);
@@ -756,25 +750,11 @@ app.options('/vendor/listing', (_req, res) => {
 app.post('/vendor/listing', async (req, res) => {
   try {
     setPublicCors(res);
-
-    const {
-      category,
-      subcategory,
-      item,         // optional
-      title,
-      price,
-      city,
-      email,        // contact
-      description
-    } = req.body || {};
-
+    const { category, subcategory, item, title, price, city, email, description } = req.body || {};
     if (!category || !subcategory || !title || !price || !email) {
       return res.status(400).json({ ok: false, error: 'missing_fields' });
     }
-
-    // TODO: persist in DB or forward to Zoho here
     console.log('NEW LISTING', { category, subcategory, item, title, price, city, email, description });
-
     return res.json({ ok: true, message: 'listing_received' });
   } catch (e) {
     console.error('vendor/listing error:', e);
